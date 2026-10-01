@@ -1,43 +1,37 @@
-export function toCSV<T extends Record<string, unknown>>(
-  data: T[],
-  headers: { key: keyof T; label: string }[]
-): string {
-  if (data.length === 0) {
-    return headers.map(h => h.label).join(',') + '\n'
+export interface CsvColumn<T> {
+  label: string
+  value: (row: T) => string | number | null | undefined
+}
+
+/**
+ * Build a CSV string. Cells that a spreadsheet would treat as a formula
+ * (starting with = + - @, tab or CR) are prefixed with a quote so opening the
+ * export in Excel can't run injected formulas. Numbers are left untouched.
+ */
+export function toCSV<T>(rows: T[], columns: CsvColumn<T>[]): string {
+  const cell = (v: string | number | null | undefined) => {
+    if (v === null || v === undefined) return ''
+    if (typeof v === 'number') return String(v)
+    let s = String(v)
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
+    if (/[",\n\r]/.test(s)) s = `"${s.replace(/"/g, '""')}"`
+    return s
   }
-
-  const rows = data.map(item =>
-    headers.map(h => {
-      const value = item[h.key]
-      if (value === null || value === undefined) return ''
-      const str = String(value)
-      // Escape quotes and wrap in quotes if contains comma, quote, or newline
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-        return '"' + str.replace(/"/g, '""') + '"'
-      }
-      return str
-    }).join(',')
-  )
-
-  return [headers.map(h => h.label).join(','), ...rows].join('\n')
+  const header = columns.map((c) => cell(c.label)).join(',')
+  const body = rows.map((r) => columns.map((c) => cell(c.value(r))).join(','))
+  // BOM so Excel opens UTF-8 (₹, names) correctly.
+  return '﻿' + [header, ...body].join('\r\n')
 }
 
+/** Browser-only: trigger a download of CSV text. */
 export function downloadCSV(csv: string, filename: string) {
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const link = document.createElement('a')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
-  link.setAttribute('href', url)
-  link.setAttribute('download', filename)
-  link.style.visibility = 'hidden'
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
   URL.revokeObjectURL(url)
-}
-
-export function generateFilename(prefix: string): string {
-  const now = new Date()
-  const dateStr = now.toISOString().split('T')[0]
-  const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-')
-  return `${prefix}-${dateStr}-${timeStr}.csv`
 }

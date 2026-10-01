@@ -12,13 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Standalone database test harness (plain Node script, own package.json).
+    "supabase/tests/**",
   ]),
-  {
-    rules: {
-      "@typescript-eslint/ban-ts-comment": "off",
-      "react-hooks/exhaustive-deps": "warn",
-    },
-  },
 ]);
 
 export default eslintConfig;

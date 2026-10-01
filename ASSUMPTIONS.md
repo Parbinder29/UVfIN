@@ -1,73 +1,33 @@
-# Assumptions Made During Development
+# Assumptions
 
-## 1. Authentication & Users
-- **No email confirmation flow**: Users are created by admin in Supabase dashboard with "Auto confirm" checked. No "forgot password" or email verification flows built.
-- **Exactly 3 users**: 2 Finance Managers + 1 Director. No support for additional users without manual Supabase dashboard work.
-- **Password reset**: Handled entirely in Supabase dashboard by admin.
+Decisions made where the brief was open. Change any of them if they're wrong.
 
-## 2. Currency & Localization
-- **Default currency**: INR (₹) with `en-IN` locale
-- **Configurable**: Via `NEXT_PUBLIC_CURRENCY` and `NEXT_PUBLIC_LOCALE` env vars
-- **No multi-currency support**: Single currency for entire app
+## Platform
+- **Next.js 16 renamed `middleware.ts` to `proxy.ts`.** The session refresh and login redirect live in `src/proxy.ts` and `src/lib/supabase/middleware.ts`.
+- shadcn/ui components are copied into `src/components/ui` (the standard shadcn approach). `cn()` lives in `src/lib/utils.ts`.
+- Next.js was upgraded from 16.3.5 to 16.3.8 to fix a critical advisory (GHSA-vcvr-r3jv-pc5j).
 
-## 3. Data Model
-- **Categories/Sources/Payment Methods**: Hardcoded in `src/lib/constants.ts` - easy to modify but require code change + redeploy
-- **Investment time precision**: Stored as `timestamptz` (date + time), displayed in local time
-- **Attachment storage**: Single `attachments` bucket, organized by table prefix (`expenses/`, `earnings/`)
-- **File size limit**: 5 MB per file (enforced client-side, should add server-side)
+## Data and rules
+- Migrations 001 to 003 were kept as written. All changes are in a new `004_hardening.sql`, so a database that already ran 001 to 003 can simply run 004.
+- **Deleting an investor = deactivating** (`is_active = false`). Their history and totals stay. New contributions to inactive investors are blocked. The audit log shows this as "Deactivated".
+- **Deleted records are final through the app.** Once soft-deleted, a row can't be edited or restored by users. An admin can restore it in the SQL editor if needed.
+- **Attachments are evidence**: they can be added or replaced (the record points to the new file), but files are never overwritten or deleted.
+- Attachment types are PDF, JPG and PNG (the brief's list). WEBP from the earlier draft was dropped.
+- Payment methods: Cash, Bank Transfer, UPI, Cheque, Card, Other, shared by all sections.
+- Amounts: positive, at most 2 decimals, below 1 trillion.
 
-## 4. UI/UX Decisions
-- **Sidebar collapse**: Icon-only mode on desktop, drawer on mobile
-- **Date pickers**: Native `<input type="date">` and `<input type="datetime-local">` - no external date picker library
-- **Charts**: Recharts with vertical bar chart for monthly comparison, donut charts for categories/sources, area chart for investments
-- **Pagination**: 25 rows per page, client-side page state
-- **Empty states**: Friendly messages with icons
-- **Loading states**: Skeleton loaders for all data sections
+## Time
+- One **company time zone** (`NEXT_PUBLIC_TIMEZONE`, default `Asia/Kolkata`) is used for "this month", date filters, the dashboard and investment times. The investment form takes date and time in that zone and stores UTC.
+- Date-only fields (expense/earning dates) are shown exactly as entered, with no time-zone shift.
 
-## 5. Security
-- **RLS policies**: Enforced at database level, not just UI
-- **Server Actions**: All mutations validate role server-side
-- **No service role key**: Only anon key used
-- **Audit log**: Trigger-based, captures INSERT/UPDATE/SOFT_DELETE with old/new JSON
+## UI
+- Native date and date-time inputs are used instead of a calendar popover. They're accessible and work well on phones.
+- List filters live in the URL, so pages are server-rendered and a filtered view can be bookmarked or shared.
+- Dashboard default range is **This Month**. List pages default to **All Time**.
+- The "Investments over time" chart shows the cumulative total within the selected range.
+- Donut charts show the top 7 slices plus "Other".
+- CSV export covers every row matching the filters, capped at 10,000 rows per export.
+- Audit log has no CSV export (not required by the brief).
 
-## 6. Free Tier Optimizations
-- **Pagination**: All lists paginated (25/page)
-- **Select columns**: Explicit column selection, no `SELECT *`
-- **Indexes**: Created on date columns, foreign keys, audit log
-- **Attachments**: 5 MB max, private bucket
-
-## 7. Not Implemented (Out of Scope)
-- Payment gateways / bank sync
-- Multi-currency conversion
-- Invoicing / GST filing
-- Payroll
-- Email notifications
-- Multi-company support
-- Mobile app
-- Public sign-up
-- AI features
-
-## 8. Technical Choices
-- **Server Components by default**: Data fetching in Server Components, interactive parts as Client Components
-- **Server Actions for mutations**: Instead of API routes
-- **@supabase/ssr**: For cookie-based session management
-- **Middleware**: Session refresh + route protection
-- **shadcn/ui**: Copied components (not npm package) for full customization
-- **zod**: Validation on both client and server
-
-## 9. Known Limitations
-- **Investor detail page**: Not implemented (route exists in sidebar but no page)
-- **Attachment preview/download**: Basic link only, no inline preview
-- **Bulk operations**: No bulk delete/edit/import
-- **Advanced filtering**: No saved filters, no column visibility toggle
-- **Real-time updates**: No Supabase Realtime subscriptions
-- **Audit log pagination**: Basic pagination only, no infinite scroll
-
-## 10. Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Required | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Required | Supabase anon key |
-| `NEXT_PUBLIC_CURRENCY` | `INR` | ISO currency code |
-| `NEXT_PUBLIC_LOCALE` | `en-IN` | BCP 47 locale tag |
+## Not built (out of scope per brief)
+Payment gateways, bank sync, multi-currency, invoicing/GST, payroll, email notifications, multi-company, mobile app, public sign-up, AI features.
