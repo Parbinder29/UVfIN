@@ -1,82 +1,50 @@
-const CURRENCY = process.env.NEXT_PUBLIC_CURRENCY || 'INR'
-const LOCALE = process.env.NEXT_PUBLIC_LOCALE || 'en-IN'
+import { CURRENCY, LOCALE, TIMEZONE } from '@/lib/env'
 
-export function formatCurrency(amount: number | string): string {
-  const num = typeof amount === 'string' ? parseFloat(amount) : amount
-  return new Intl.NumberFormat(LOCALE, {
-    style: 'currency',
-    currency: CURRENCY,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(num)
+const currencyFmt = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: CURRENCY, maximumFractionDigits: 2 })
+const compactFmt = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: CURRENCY, notation: 'compact', maximumFractionDigits: 1 })
+
+/** The one place money is formatted. */
+export function formatCurrency(amount: number | string | null | undefined): string {
+  const n = Number(amount ?? 0)
+  return currencyFmt.format(Number.isFinite(n) ? n : 0)
 }
 
-export function formatNumber(amount: number | string): string {
-  const num = typeof amount === 'string' ? parseFloat(amount) : amount
-  return new Intl.NumberFormat(LOCALE, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(num)
+/** Short axis labels. For INR uses K / L (lakh) / Cr (crore), which read unambiguously. */
+export function formatCompactCurrency(amount: number): string {
+  if (CURRENCY !== 'INR') return compactFmt.format(amount)
+  const abs = Math.abs(amount)
+  const short = (n: number, unit: string) => `₹${Number(n.toFixed(1)).toLocaleString(LOCALE)}${unit}`
+  if (abs >= 1e7) return short(amount / 1e7, 'Cr')
+  if (abs >= 1e5) return short(amount / 1e5, 'L')
+  if (abs >= 1e3) return short(amount / 1e3, 'K')
+  return `₹${amount}`
 }
 
-export function formatDate(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date
-  return new Intl.DateTimeFormat(LOCALE, {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(d)
+/** Format a date-only value (YYYY-MM-DD) without shifting it across time zones. */
+export function formatDate(date: string | null | undefined): string {
+  if (!date) return ''
+  const [y, m, d] = date.slice(0, 10).split('-').map(Number)
+  return new Intl.DateTimeFormat(LOCALE, { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(y, m - 1, d))
+  )
 }
 
-export function formatDateTime(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date
+/** Format a timestamp in the company time zone, with time. */
+export function formatDateTime(value: string | null | undefined): string {
+  if (!value) return ''
   return new Intl.DateTimeFormat(LOCALE, {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(d)
+    timeZone: TIMEZONE,
+  }).format(new Date(value))
 }
 
-export function formatDateForInput(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date
-  return d.toISOString().split('T')[0]
+export function formatMonth(yyyyMm: string): string {
+  const [y, m] = yyyyMm.split('-').map(Number)
+  return new Intl.DateTimeFormat(LOCALE, { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(y, m - 1, 1))
+  )
 }
-
-export function formatDateTimeForInput(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date
-  const offset = d.getTimezoneOffset() * 60000
-  const local = new Date(d.getTime() - offset)
-  return local.toISOString().slice(0, 16)
-}
-
-export function getMonthYear(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date
-  return new Intl.DateTimeFormat(LOCALE, {
-    month: 'short',
-    year: 'numeric',
-  }).format(d)
-}
-
-export function getDateRangePresets() {
-  const now = new Date()
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
-  const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59)
-  const startOfQuarter = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)
-  const endOfQuarter = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3 + 3, 0, 23, 59, 59)
-  const startOfYear = new Date(now.getFullYear(), 0, 1)
-  const endOfYear = new Date(now.getFullYear(), 11, 31, 23, 59, 59)
-
-  return [
-    { label: 'This Month', start: startOfMonth, end: endOfMonth },
-    { label: 'Last Month', start: startOfLastMonth, end: endOfLastMonth },
-    { label: 'This Quarter', start: startOfQuarter, end: endOfQuarter },
-    { label: 'This Year', start: startOfYear, end: endOfYear },
-    { label: 'All Time', start: null, end: null },
-  ] as const
-}
-
-export type DateRangePreset = ReturnType<typeof getDateRangePresets>[number] | { label: 'Custom'; start: null; end: null }

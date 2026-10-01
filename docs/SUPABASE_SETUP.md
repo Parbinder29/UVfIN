@@ -1,161 +1,95 @@
-# Supabase Setup Guide for UVfIN
+# Supabase setup (step by step, no coding needed)
 
-This guide walks you through setting up the Supabase project for UVfIN from scratch.
+This sets up the free database, logins and file storage for UVfIN. It takes about 20 minutes.
 
-## 1. Create a Supabase Project
+## 1. Create the project
 
-1. Go to [supabase.com](https://supabase.com) and sign in (or create a free account)
-2. Click **"New Project"**
-3. Choose your organization
-4. Fill in:
-   - **Name**: `uvfin` (or your preferred name)
-   - **Database Password**: Generate a strong password (save it!)
-   - **Region**: Choose closest to your users (e.g., `ap-south-1` for India)
-5. Click **"Create new project"**
-6. Wait 2-3 minutes for provisioning
+1. Go to <https://supabase.com>, sign in, and click **New project**.
+2. Name: `uvfin`. Region: **Mumbai (ap-south-1)** if your team is in India.
+3. Click **Generate a password**, then save that database password in your password manager. You need it only for backups.
+4. Click **Create new project** and wait until the dashboard finishes loading.
 
-## 2. Get Project Credentials
+## 2. Run the database scripts (in order)
 
-1. In your Supabase dashboard, go to **Settings** → **API**
-2. Copy these values:
-   - **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
-   - **anon (public) key** → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+1. In the left sidebar open **SQL Editor** and click **New query**.
+2. Open `supabase/migrations/001_init.sql` from this repository, copy **all** of it, paste it into the editor, and click **Run**. You should see "Success. No rows returned".
+3. Repeat with a **new query** for each of these, in this exact order:
+   - `002_rls.sql`
+   - `003_storage.sql`
+   - `004_hardening.sql`
 
-## 3. Run Database Migrations
+Each script runs once. If a script fails, stop and read the error. Don't run the next one until it succeeds.
 
-1. In Supabase dashboard, go to **SQL Editor**
-2. Click **"New query"**
-3. Run each migration file **in order** (copy-paste the entire content):
+What they do: 001 creates the tables and the automatic audit log, 002 turns on row-level security, 003 creates the private `attachments` bucket, and 004 adds the extra security locks and the reporting functions the dashboard uses.
 
-### 3.1 Run `001_init.sql`
-```sql
--- Copy entire content from supabase/migrations/001_init.sql
-```
+## 3. Turn off public sign-up
 
-Click **Run** (or Ctrl+Enter)
+1. Go to **Authentication → Sign In / Providers** (called **Providers** on older dashboards).
+2. Under **User Signups**, turn **Allow new users to sign up** off and click **Save**.
+3. Open the **Email** provider and make sure it is enabled (it's needed to sign in).
 
-### 3.2 Run `002_rls.sql`
-```sql
--- Copy entire content from supabase/migrations/002_rls.sql
-```
+With this off, nobody can create an account by themselves. Only you, in the dashboard, can.
 
-Click **Run**
+## 4. Create the three users
 
-### 3.3 Run `003_storage.sql`
-```sql
--- Copy entire content from supabase/migrations/003_storage.sql
-```
+1. Go to **Authentication → Users → Add user → Create new user**.
+2. Create each account with a strong password (12+ characters) and tick **Auto Confirm User**:
 
-Click **Run**
+| Person | Role in UVfIN |
+|---|---|
+| Finance member 1 | finance_manager |
+| Finance member 2 | finance_manager |
+| Director | director |
 
-> **Note**: If you get "relation already exists" errors, that's fine - it means the migration already ran.
+3. After creating each one, click the user and copy their **User UID** (looks like `3f1c…-…`).
 
-## 4. Create Auth Users
+## 5. Give each user their role
 
-1. Go to **Authentication** → **Users**
-2. Click **"Add user"** → **"Create new user"**
-3. Create 3 users (one for each role):
+1. Open `supabase/seed.sql`, copy it into a **new query** in the SQL Editor.
+2. Remove the `-- ` at the start of the three `insert` blocks.
+3. Replace each `<…_AUTH_UUID>` with the matching User UID from step 4, and replace the names.
+4. Click **Run**.
 
-| Email | Password | Role |
-|-------|----------|------|
-| `finance1@uvingroup.com` | (set a strong password) | Finance Manager |
-| `finance2@uvingroup.com` | (set a strong password) | Finance Manager |
-| `director@uvingroup.com` | (set a strong password) | Director |
+A user who can log in but has no row here sees a "No access yet" page and can't see any data.
 
-**Important**: Check **"Auto confirm user"** for each user so they can log in immediately without email confirmation.
+## 6. Copy the two keys the app needs
 
-4. Copy the **User UUID** for each created user (you'll need these for the seed file)
+Go to **Project Settings → API** (or **Data API / API Keys** on newer dashboards) and copy:
 
-## 5. Seed the Profiles Table
+| Supabase shows | Put it in |
+|---|---|
+| Project URL | `NEXT_PUBLIC_SUPABASE_URL` |
+| `anon` `public` key (or the **Publishable key**, `sb_publishable_…`) | `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
 
-1. Go to **SQL Editor** → **New query**
-2. Open `supabase/seed.sql` from the project
-3. Replace the placeholder UUIDs with the actual User UUIDs from step 4:
+**Never** copy the `service_role` key or a **Secret key** (`sb_secret_…`) anywhere. UVfIN doesn't use it, and anyone who has it can bypass every security rule.
 
-```sql
--- Example (replace with actual UUIDs):
-INSERT INTO public.profiles (id, full_name, role) VALUES
-  ('<AUTH_USER_UUID_FINANCE_1>', 'Finance Member 1', 'finance_manager'),
-  ('<AUTH_USER_UUID_FINANCE_2>', 'Finance Member 2', 'finance_manager'),
-  ('<AUTH_USER_UUID_DIRECTOR>', 'Director Name', 'director')
-ON CONFLICT (id) DO UPDATE SET
-  full_name = EXCLUDED.full_name,
-  role = EXCLUDED.role;
-```
+## 7. Set the site URL
 
-4. Click **Run**
+Go to **Authentication → URL Configuration**:
 
-## 6. Configure Auth Settings
+- **Site URL**: `http://localhost:3000` for now. Change it to your Vercel address after deploying (see `DEPLOY_VERCEL.md`).
 
-1. Go to **Authentication** → **Settings**
-2. Under **Site URL**: Add your local dev URL: `http://localhost:3000`
-3. Under **Redirect URLs**: Add:
-   - `http://localhost:3000/auth/callback`
-   - (Later: `https://your-vercel-app.vercel.app/auth/callback`)
-4. **Disable public sign-ups**:
-   - Go to **Authentication** → **Providers**
-   - Find **Email** provider
-   - Turn OFF **"Enable signup"**
-   - This ensures only admin-created accounts can access the app
+UVfIN signs in with email and password only, so no redirect URLs are needed.
 
-## 7. Configure Storage (Attachments)
+## 8. Recommended extra security settings
 
-The `003_storage.sql` migration creates the bucket. Verify:
-1. Go to **Storage** in the sidebar
-2. You should see `attachments` bucket (private)
-3. Policies should allow:
-   - Both roles can read (view/download)
-   - Only `finance_manager` can upload
+- **Authentication → Sign In / Providers → Email**: set **Minimum password length** to 12 and tick the lowercase, uppercase, digits and symbols requirement.
+- **Authentication → Rate Limits**: keep the defaults. They slow down password guessing.
+- **Project Settings → General**: keep the project's **Data API** limited to the `public` schema (the default).
 
-## 8. Create Local Environment File
+## 9. Check it worked
 
-Copy `.env.example` to `.env.local` and fill in:
-
-```bash
-cp .env.example .env.local
-```
-
-Edit `.env.local`:
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
-NEXT_PUBLIC_CURRENCY=INR
-NEXT_PUBLIC_LOCALE=en-IN
-```
-
-## 9. Test Locally
-
-```bash
-npm run dev
-```
-
-Open `http://localhost:3000` - you should be redirected to `/login`
-
-Log in with one of the accounts you created.
-
-## 10. Verify RLS Works
-
-1. Log in as a **Finance Manager** - you should see Add/Edit/Delete buttons
-2. Log in as **Director** - you should see NO write buttons, and direct API calls should fail
+- **Storage**: there is a bucket called `attachments`, marked **Private**.
+- **Table Editor → profiles**: three rows, with the right roles.
+- **Database → Tables**: each table shows **RLS enabled**.
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| "Invalid login credentials" | Check email/password, ensure user is confirmed |
-| "Row Level Security policy violation" | Check RLS policies ran correctly, verify user has profile row |
-| "Bucket not found" | Run `003_storage.sql` migration |
-| Redirect loop on login | Check middleware.ts, ensure `/auth/callback` route exists |
-| Charts not loading | Check browser console for Recharts errors |
+| Problem | Fix |
+|---|---|
+| "Invalid email or password" | Check the password, and that **Auto Confirm User** was ticked |
+| "No access yet" after login | The user has no row in `profiles`. Redo step 5 |
+| Dashboard shows "Something went wrong" | `004_hardening.sql` was not run, or the project is paused (resume it in the dashboard) |
+| `004_hardening.sql` says a constraint already exists | It was already run. Nothing to do |
 
-## Free Tier Limits
-
-- **Database**: 500 MB
-- **Storage**: 1 GB
-- **Bandwidth**: 2 GB/month
-- **Auth**: Unlimited users
-- **Projects pause** after ~7 days of inactivity (log in weekly or set up a cron ping)
-
----
-
-**Next step**: See `docs/DEPLOY_VERCEL.md` for deployment instructions.
+Free plan: 500 MB database, 1 GB file storage. Projects **pause after about a week with no activity**. See `BACKUP.md` for keeping it awake.

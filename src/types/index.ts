@@ -1,8 +1,9 @@
+export type UserRole = 'finance_manager' | 'director'
+
 export interface Profile {
   id: string
   full_name: string
-  role: 'finance_manager' | 'director'
-  created_at: string
+  role: UserRole
 }
 
 export interface Expense {
@@ -15,11 +16,8 @@ export interface Expense {
   payment_method: string | null
   reference_no: string | null
   attachment_path: string | null
-  is_deleted: boolean
   created_by: string
   created_at: string
-  updated_at: string
-  profiles?: Profile
 }
 
 export interface Earning {
@@ -32,14 +30,11 @@ export interface Earning {
   payment_method: string | null
   reference_no: string | null
   attachment_path: string | null
-  is_deleted: boolean
   created_by: string
   created_at: string
-  updated_at: string
-  profiles?: Profile
 }
 
-export interface Investor {
+export interface InvestorSummary {
   id: string
   full_name: string
   email: string | null
@@ -48,9 +43,9 @@ export interface Investor {
   is_active: boolean
   created_by: string
   created_at: string
-  updated_at: string
-  total_invested?: number
-  contribution_count?: number
+  total_invested: number
+  contribution_count: number
+  last_invested_at: string | null
 }
 
 export interface Investment {
@@ -61,15 +56,11 @@ export interface Investment {
   payment_method: string | null
   reference_no: string | null
   notes: string | null
-  is_deleted: boolean
   created_by: string
   created_at: string
-  updated_at: string
-  investors?: Investor
-  profiles?: Profile
 }
 
-export interface AuditLog {
+export interface AuditEntry {
   id: number
   table_name: string
   record_id: string | null
@@ -78,40 +69,8 @@ export interface AuditLog {
   new_data: Record<string, unknown> | null
   changed_by: string | null
   changed_at: string
-  profiles?: Profile
 }
 
-export interface KPIData {
-  totalEarnings: number
-  totalExpenses: number
-  netBalance: number
-  totalInvestments: number
-  earningsThisMonth: number
-  expensesThisMonth: number
-  investmentsThisMonth: number
-}
-
-export interface ChartDataPoint {
-  month: string
-  earnings: number
-  expenses: number
-}
-
-export interface CategoryChartData {
-  name: string
-  value: number
-}
-
-export interface InvestorChartData {
-  name: string
-  value: number
-}
-
-export interface RecentActivityItem {
-  id: string
-  type: 'expense' | 'earning' | 'investment'
-  date: string
-  amount: number
-  description: string
-  categoryOrSource: string
-}
+export type ActionResult<T = undefined> =
+  | { ok: true; data?: T }
+  | { ok: false; error: string; fieldErrors?: Record<string, string[] | undefined> }

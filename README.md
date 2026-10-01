@@ -1,154 +1,89 @@
-# UVfIN - Finance Management Dashboard
+# UVfIN
 
-Internal finance dashboard for **UVIN Group** (uvingroup.com).
+**UV** + **f**inance + **IN**: the internal finance dashboard for **UVIN Group** ([uvingroup.com](https://uvingroup.com)).
 
-## Overview
-
-UVfIN is a production-ready finance management application where:
-- **2 Finance Members** can create, edit, and manage all financial records
-- **1 Director** has read-only access to everything
-
-### Core Sections
-1. **Money Spent** - Track all expenditures with categories, payees, attachments
-2. **Earnings** - Track all income sources with clients, payment methods
-3. **Investments** - Manage investors and their contributions with date/time
-4. **Dashboard** - KPIs, charts, recent activity overview
-5. **Audit Log** - Complete change history with diffs
-
-## Tech Stack
-
-- **Framework**: Next.js 16 (App Router, TypeScript, `src/` directory)
-- **Styling**: Tailwind CSS + shadcn/ui + lucide-react
-- **Charts**: Recharts
-- **Forms**: react-hook-form + zod validation
-- **Database/Auth/Storage**: Supabase (PostgreSQL + RLS + Auth + Storage)
-- **Deployment**: Vercel + GitHub
+Two finance members record everything that goes out and comes in by hand. The director can see everything and change nothing.
 
 ## Features
 
-- ✅ Role-based access control (Finance Manager / Director)
-- ✅ Row Level Security enforced in database
-- ✅ Soft deletes with audit trail
-- ✅ CSV export on all data pages
-- ✅ Date range filtering with presets
-- ✅ Search, sort, pagination
-- ✅ Attachment uploads (Supabase Storage)
-- ✅ Light/Dark mode
-- ✅ Responsive design (mobile sidebar)
-- ✅ Currency formatting (INR default, configurable)
-- ✅ Loading skeletons & error handling
+- **Money Spent**: every expenditure, with payee, category, payment method, reference, an optional receipt (PDF/JPG/PNG, 5 MB) and who added it.
+- **Earnings**: every incoming payment, with source and client.
+- **Investments**: investors (members), each contribution with **date and time**, totals per investor, and a detail page with full history.
+- **Dashboard**: total earnings, money spent, net balance and investments for any date range, plus a "this month" figure on each. Charts for monthly earnings vs spent, spending by category, earnings by source and investments over time. Shows the 10 most recent entries.
+- **Audit log**: every create, edit and delete, with who did it and a before/after view. It is written by the database itself and can't be edited.
+- Search, filters (date range, category/source, payment method, investor, min/max amount), sortable columns, 25 rows per page, a total for the filtered rows, and **CSV export** of the filtered rows.
+- Light and dark mode, mobile layout, INR formatting (configurable).
 
-## Getting Started
+## Roles
 
-### Prerequisites
-- Node.js 18+
-- npm/pnpm/yarn
-- Supabase account (free tier)
-- Vercel account (free tier) for deployment
+| Role | Can |
+|---|---|
+| `finance_manager` (2 people) | Add, edit and delete (soft delete) in every section, manage investors, export CSV, view the audit log |
+| `director` (1 person) | View everything and export CSV. No write controls are shown, and the database rejects writes anyway |
 
-### Local Development
+There is no sign-up page. The administrator creates accounts in Supabase.
 
-1. **Clone and install**
+## Stack
+
+Next.js 16 (App Router, TypeScript), Tailwind CSS 4, shadcn/ui, lucide-react, Recharts, react-hook-form + zod, and Supabase (Postgres, Row Level Security, Auth, Storage) via `@supabase/ssr`. Hosted on Vercel. Everything runs on free tiers.
+
+## Security model (short version)
+
+See [SECURITY.md](SECURITY.md) for the full list.
+
+- **Database is the gatekeeper.** Row Level Security on every table. Only finance managers can insert or update. **Nobody** can delete or truncate (privileges are revoked). The audit log and profiles are read-only.
+- The database sets `created_by`/`created_at` itself, freezes deleted rows, and only lets contributions go to active investors.
+- Server actions re-check the role and validate input with zod before every write. The UI hides write controls from the director.
+- Only the public anon/publishable key is used. The service-role key is never needed.
+- Strict security headers (CSP, HSTS, no framing). Search input is sanitised. CSV exports are protected against spreadsheet formula injection. Uploaded files are checked by content on the server.
+
+## Local setup
+
 ```bash
-git clone <your-repo-url>
-cd uvfin
 npm install
+cp .env.example .env.local   # fill in the Supabase URL and anon key
+npm run dev                  # http://localhost:3000
 ```
 
-2. **Set up Supabase** (see `docs/SUPABASE_SETUP.md`)
-   - Create project
-   - Run migrations
-   - Create auth users
-   - Seed profiles
+You need a Supabase project with the migrations applied first. See [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md).
 
-3. **Configure environment**
-```bash
-cp .env.example .env.local
+## Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Development server |
+| `npm run build` / `npm start` | Production build / serve |
+| `npm run lint` | ESLint |
+| `cd supabase/tests && npm install && npm test` | Applies all migrations to a throwaway Postgres and checks the RLS and permission rules (no Supabase account needed) |
+
+## Configuration
+
+| Variable | Default | Notes |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | required | Project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | required | anon or publishable key, never the secret key |
+| `NEXT_PUBLIC_CURRENCY` | `INR` | ISO 4217 code |
+| `NEXT_PUBLIC_LOCALE` | `en-IN` | number and date formatting |
+| `NEXT_PUBLIC_TIMEZONE` | `Asia/Kolkata` | used for "this month", date filters and investment times |
+
+To change categories, earning sources or payment methods, edit `src/lib/constants.ts`.
+
+## Docs
+
+- [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md): create the database, users and roles
+- [docs/DEPLOY_VERCEL.md](docs/DEPLOY_VERCEL.md): publish it, plus an optional `finance.uvingroup.com` domain
+- [docs/BACKUP.md](docs/BACKUP.md): backups and keeping the free project awake
+
+## Project layout
+
 ```
-Edit `.env.local` with your Supabase credentials.
-
-4. **Run development server**
-```bash
-npm run dev
+supabase/migrations/   001_init, 002_rls, 003_storage, 004_hardening (run in order)
+supabase/seed.sql      template for the 3 profile rows
+supabase/tests/        database security tests
+src/proxy.ts           session refresh + login redirect (Next 16's name for middleware)
+src/actions/           server actions (all writes, CSV export, signed attachment links)
+src/lib/               auth, Supabase clients, queries, validators, formatting, CSV
+src/app/(auth)/login   login page
+src/app/(app)/         dashboard, money-spent, earnings, investments, audit-log
+src/components/        layout, tables, forms, charts, ui (shadcn)
 ```
-Open [http://localhost:3000](http://localhost:3000)
-
-### Available Scripts
-
-```bash
-npm run dev      # Start dev server
-npm run build    # Production build
-npm run start    # Start production server
-npm run lint     # Run ESLint
-```
-
-## Project Structure
-
-```
-uvfin/
-├─ supabase/
-│  ├─ migrations/     # SQL migrations (001_init, 002_rls, 003_storage)
-│  └─ seed.sql        # Profile seed template
-├─ src/
-│  ├─ app/
-│  │  ├─ (auth)/login/
-│  │  ├─ (app)/
-│  │  │  ├─ dashboard/
-│  │  │  ├─ money-spent/
-│  │  │  ├─ earnings/
-│  │  │  ├─ investments/
-│  │  │  └─ audit-log/
-│  │  ├─ auth/callback/
-│  │  └─ layout.tsx
-│  ├─ components/
-│  │  ├─ ui/          # shadcn/ui components
-│  │  └─ layout/      # Sidebar, Header
-│  ├─ lib/
-│  │  ├─ supabase/    # Client/Server/Middleware clients
-│  │  ├─ auth.ts      # Auth helpers
-│  │  ├─ constants.ts # Categories, sources, payment methods
-│  │  ├─ format.ts    # Currency/date formatting
-│  │  ├─ validators.ts# Zod schemas
-│  │  └─ csv.ts       # CSV export utilities
-│  ├─ actions/        # Server Actions (CRUD)
-│  └─ types/
-├─ docs/              # Setup & deployment guides
-├─ .env.example
-└─ package.json
-```
-
-## Documentation
-
-- [`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md) - Step-by-step Supabase setup
-- [`docs/DEPLOY_VERCEL.md`](docs/DEPLOY_VERCEL.md) - Vercel deployment guide
-- [`docs/BACKUP.md`](docs/BACKUP.md) - Backup strategy for free tier
-
-## Deployment
-
-See [`docs/DEPLOY_VERCEL.md`](docs/DEPLOY_VERCEL.md) for complete deployment instructions.
-
-Quick steps:
-1. Push to GitHub
-2. Import in Vercel
-3. Add environment variables
-4. Update Supabase Auth redirect URLs
-5. (Optional) Configure custom domain
-
-## Security
-
-- All writes go through Server Actions with role verification
-- Row Level Security on every table
-- No service role key exposed
-- Security headers in `next.config.ts`
-- No public sign-up (admin-only user creation)
-
-## Free Tier Constraints
-
-- Supabase: 500 MB database, 1 GB storage
-- Vercel: 100 GB bandwidth/month
-- No paid services used
-- Project pauses after ~7 days inactivity (see `docs/BACKUP.md` for keep-alive)
-
-## License
-
-Private - UVIN Group internal use only.
