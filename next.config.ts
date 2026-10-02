@@ -4,6 +4,12 @@ const isDev = process.env.NODE_ENV !== 'production'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const supabaseOrigin = supabaseUrl ? new URL(supabaseUrl).origin : ''
 
+// The CSP below is fixed at build time. Building on Vercel without the
+// Supabase URL would ship a policy that blocks attachment uploads, so stop.
+if (process.env.VERCEL && !supabaseOrigin) {
+  throw new Error('NEXT_PUBLIC_SUPABASE_URL must be set in Vercel before building.')
+}
+
 // Content Security Policy. 'unsafe-inline' for scripts is needed by Next.js's
 // inline bootstrap and the theme script; everything else is locked to this
 // site and the Supabase project.
