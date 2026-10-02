@@ -17,10 +17,11 @@ This sets up the free database, logins and file storage for UVfIN. It takes abou
    - `002_rls.sql`
    - `003_storage.sql`
    - `004_hardening.sql`
+   - `005_search_path.sql`
 
 Each script runs once. If a script fails, stop and read the error. Don't run the next one until it succeeds.
 
-What they do: 001 creates the tables and the automatic audit log, 002 turns on row-level security, 003 creates the private `attachments` bucket, and 004 adds the extra security locks and the reporting functions the dashboard uses.
+What they do: 001 creates the tables and the automatic audit log, 002 turns on row-level security, 003 creates the private `attachments` bucket, and 004 adds the extra security locks and the reporting functions the dashboard uses, and 005 closes a small gap flagged by Supabase's Security Advisor.
 
 ## 3. Turn off public sign-up
 
@@ -76,6 +77,8 @@ UVfIN signs in with email and password only, so no redirect URLs are needed.
 - **Authentication → Sign In / Providers → Email**: set **Minimum password length** to 12 and tick the lowercase, uppercase, digits and symbols requirement.
 - **Authentication → Rate Limits**: keep the defaults. They slow down password guessing.
 - **Project Settings → General**: keep the project's **Data API** limited to the `public` schema (the default).
+
+Then work through `SUPABASE_SECURITY_CHECKLIST.md`.
 
 ## 9. Check it worked
 

@@ -5,7 +5,7 @@ export interface CsvColumn<T> {
 
 /**
  * Build a CSV string. Cells that a spreadsheet would treat as a formula
- * (starting with = + - @, tab or CR) are prefixed with a quote so opening the
+ * (starting with = + - @, tab or CR, even after leading spaces) are prefixed with a quote so opening the
  * export in Excel can't run injected formulas. Numbers are left untouched.
  */
 export function toCSV<T>(rows: T[], columns: CsvColumn<T>[]): string {
@@ -13,7 +13,7 @@ export function toCSV<T>(rows: T[], columns: CsvColumn<T>[]): string {
     if (v === null || v === undefined) return ''
     if (typeof v === 'number') return String(v)
     let s = String(v)
-    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
+    if (/^\s*[=+\-@\t\r]/.test(s)) s = `'${s}`
     if (/[",\n\r]/.test(s)) s = `"${s.replace(/"/g, '""')}"`
     return s
   }
