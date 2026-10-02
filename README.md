@@ -41,7 +41,7 @@ See [SECURITY.md](SECURITY.md) for the full list.
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in the Supabase URL and anon key
+# create .env.local with NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
 npm run dev                  # http://localhost:3000
 ```
 

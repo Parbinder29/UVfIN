@@ -30,9 +30,8 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files: never commit real keys. Only the example is tracked.
+# env files: never commit real keys.
 .env*
-!.env.example
 
 # vercel
 .vercel
