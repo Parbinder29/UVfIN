@@ -12,6 +12,7 @@ import { parseListParams } from '@/lib/list-params'
 import { getFilteredTotal, getLedgerRows } from '@/lib/queries'
 import { ExportButton } from './ExportButton'
 import { FilterBar } from './FilterBar'
+import { ImportLedgerButton } from './ImportLedgerButton'
 import { AddLedgerButton, LedgerRowActions } from './LedgerControls'
 import { PaginationBar } from './PaginationBar'
 import { SortHeader } from './SortHeader'
@@ -44,6 +45,7 @@ export async function LedgerPage({
         description={ledger === 'expenses' ? 'Every expenditure, with full details.' : 'Every source of incoming money.'}
       >
         <ExportButton filename={ledger === 'expenses' ? 'money-spent' : 'earnings'} action={exportAction} />
+        {isManager && <ImportLedgerButton ledger={ledger} />}
         {isManager && <AddLedgerButton ledger={ledger} />}
       </PageHeader>
 

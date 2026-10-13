@@ -6,6 +6,7 @@ import { getProfileNames, requireManager, requireReader } from '@/lib/auth'
 import { ATTACHMENT_MAX_BYTES } from '@/lib/constants'
 import { toCSV } from '@/lib/csv'
 import { formatDate } from '@/lib/format'
+import { IMPORT_MAX_ROWS } from '@/lib/import'
 import { LEDGERS, LEDGER_SORTS, type LedgerRow } from '@/lib/ledger'
 import { parseListParams } from '@/lib/list-params'
 import { getLedgerRows } from '@/lib/queries'
@@ -72,6 +73,60 @@ export async function deleteLedgerEntry(key: unknown, id: unknown): Promise<Acti
     if (!data?.length) return { ok: false, error: 'Record not found. It may already be deleted.' }
     revalidate(k)
     return { ok: true }
+  } catch (e) {
+    return caught(e)
+  }
+}
+
+/** Same day, amount, category/source, payee/client and reference: treated as already recorded. */
+function entryKey(cfg: (typeof LEDGERS)[keyof typeof LEDGERS], r: Record<string, unknown>): string {
+  const t = (v: unknown) => String(v ?? '').trim().toLowerCase()
+  return [r[cfg.dateCol], Number(r.amount).toFixed(2), t(r[cfg.kindCol]), t(r[cfg.partyCol]), t(r.reference_no)].join('|')
+}
+
+/**
+ * Add many entries at once (Excel import). Every row is validated again here.
+ * Rows that match an existing entry are skipped, so importing the same file
+ * twice doesn't double the totals. The rest go in as one insert: all or nothing.
+ */
+export async function importLedgerEntries(
+  key: unknown,
+  input: unknown
+): Promise<ActionResult<{ added: number; skipped: number }>> {
+  try {
+    await requireManager()
+    const k = ledgerKey.parse(key)
+    const cfg = LEDGERS[k]
+    const list = z.array(z.unknown()).min(1).max(IMPORT_MAX_ROWS).safeParse(input)
+    if (!list.success) return { ok: false, error: `Import between 1 and ${IMPORT_MAX_ROWS} rows at a time.` }
+
+    const schema = k === 'expenses' ? expenseSchema : earningSchema
+    const rows: Record<string, unknown>[] = []
+    for (const [i, raw] of list.data.entries()) {
+      const parsed = schema.safeParse(raw)
+      if (!parsed.success) return { ok: false, error: `Row ${i + 1} of the import is not valid. Fix it and try again.` }
+      rows.push(parsed.data)
+    }
+
+    const supabase = await createClient()
+    const dates = rows.map((r) => String(r[cfg.dateCol])).sort()
+    const { data: existing, error: readError } = await supabase
+      .from(k)
+      .select(`${cfg.dateCol}, amount, ${cfg.kindCol}, ${cfg.partyCol}, reference_no`)
+      .eq('is_deleted', false)
+      .gte(cfg.dateCol, dates[0])
+      .lte(cfg.dateCol, dates[dates.length - 1])
+      .limit(50000)
+    if (readError) return dbError(readError)
+    const seen = new Set((existing ?? []).map((r) => entryKey(cfg, r as Record<string, unknown>)))
+    const fresh = rows.filter((r) => !seen.has(entryKey(cfg, r)))
+
+    if (fresh.length) {
+      const { error } = await supabase.from(k).insert(fresh)
+      if (error) return dbError(error)
+      revalidate(k)
+    }
+    return { ok: true, data: { added: fresh.length, skipped: rows.length - fresh.length } }
   } catch (e) {
     return caught(e)
   }
