@@ -6,7 +6,8 @@ import { getProfileNames, requireManager, requireReader } from '@/lib/auth'
 import { ATTACHMENT_MAX_BYTES } from '@/lib/constants'
 import { toCSV } from '@/lib/csv'
 import { formatDate } from '@/lib/format'
-import { LEDGERS, LEDGER_SORTS, type LedgerRow } from '@/lib/ledger'
+import { IMPORT_MAX_BYTES, IMPORT_MAX_ROWS, parseGoogleSheetUrl } from '@/lib/import'
+import { LEDGERS, LEDGER_SORTS, type LedgerConfig, type LedgerRow } from '@/lib/ledger'
 import { parseListParams } from '@/lib/list-params'
 import { getLedgerRows } from '@/lib/queries'
 import { createClient } from '@/lib/supabase/server'
@@ -72,6 +73,117 @@ export async function deleteLedgerEntry(key: unknown, id: unknown): Promise<Acti
     if (!data?.length) return { ok: false, error: 'Record not found. It may already be deleted.' }
     revalidate(k)
     return { ok: true }
+  } catch (e) {
+    return caught(e)
+  }
+}
+
+/** Same day, amount, category/source, payee/client and reference: treated as already recorded. */
+function entryKey(cfg: LedgerConfig, r: Record<string, unknown>): string {
+  const t = (v: unknown) => String(v ?? '').trim().toLowerCase()
+  return [r[cfg.dateCol], Number(r.amount).toFixed(2), t(r[cfg.kindCol]), t(r[cfg.partyCol]), t(r.reference_no)].join('|')
+}
+
+/**
+ * Add many entries at once (spreadsheet import). Every row is validated again
+ * here. Rows that match an existing entry, or an earlier row of the same
+ * import, are skipped, so importing the same sheet twice doesn't double the
+ * totals. The rest go in as one insert: all or nothing.
+ */
+export async function importLedgerEntries(
+  key: unknown,
+  input: unknown
+): Promise<ActionResult<{ added: number; skipped: number }>> {
+  try {
+    await requireManager()
+    const k = ledgerKey.parse(key)
+    const cfg = LEDGERS[k]
+    const list = z.array(z.unknown()).min(1).max(IMPORT_MAX_ROWS).safeParse(input)
+    if (!list.success) return { ok: false, error: `Import between 1 and ${IMPORT_MAX_ROWS} rows at a time.` }
+
+    const schema = k === 'expenses' ? expenseSchema : earningSchema
+    const rows: Record<string, unknown>[] = []
+    for (const [i, raw] of list.data.entries()) {
+      const parsed = schema.safeParse(raw)
+      if (!parsed.success) return { ok: false, error: `Row ${i + 1} of the import is not valid. Fix it and try again.` }
+      rows.push(parsed.data)
+    }
+
+    const supabase = await createClient()
+    const dates = rows.map((r) => String(r[cfg.dateCol])).sort()
+    const { data: existing, error: readError } = await supabase
+      .from(k)
+      .select(`${cfg.dateCol}, amount, ${cfg.kindCol}, ${cfg.partyCol}, reference_no`)
+      .eq('is_deleted', false)
+      .gte(cfg.dateCol, dates[0])
+      .lte(cfg.dateCol, dates[dates.length - 1])
+      .limit(50000)
+    if (readError) return dbError(readError)
+    const seen = new Set((existing ?? []).map((r) => entryKey(cfg, r as Record<string, unknown>)))
+    const fresh = rows.filter((r) => {
+      const rowKey = entryKey(cfg, r)
+      if (seen.has(rowKey)) return false
+      seen.add(rowKey)
+      return true
+    })
+
+    if (fresh.length) {
+      const { error } = await supabase.from(k).insert(fresh)
+      if (error) return dbError(error)
+      revalidate(k)
+    }
+    return { ok: true, data: { added: fresh.length, skipped: rows.length - fresh.length } }
+  } catch (e) {
+    return caught(e)
+  }
+}
+
+/**
+ * Download one tab of a Google Sheet as CSV. Done on the server because the
+ * browser's security policy only allows requests to this site and Supabase.
+ * Only docs.google.com export links are ever requested, built from the id.
+ */
+export async function fetchGoogleSheet(link: unknown): Promise<ActionResult<string>> {
+  try {
+    await requireManager()
+    const sheet = parseGoogleSheetUrl(z.string().max(2000).parse(link))
+    if (!sheet) return { ok: false, error: 'Paste the link of a Google Sheet (it starts with https://docs.google.com/spreadsheets/d/).' }
+
+    const notShared =
+      'Google did not share this sheet. In Google Sheets, click Share → General access → "Anyone with the link" (Viewer), then try again.'
+    let res: Response
+    try {
+      res = await fetch(`https://docs.google.com/spreadsheets/d/${sheet.id}/export?format=csv&gid=${sheet.gid}`, {
+        cache: 'no-store',
+        redirect: 'follow',
+        signal: AbortSignal.timeout(15000),
+      })
+    } catch {
+      return { ok: false, error: 'Google Sheets did not respond. Please try again.' }
+    }
+    const finalHost = new URL(res.url).hostname
+    const fromGoogleData = finalHost === 'docs.google.com' || finalHost.endsWith('.googleusercontent.com')
+    if (res.status === 404) return { ok: false, error: 'That sheet or tab was not found. Check the link.' }
+    if (!res.ok || !fromGoogleData || !res.headers.get('content-type')?.includes('text/csv')) {
+      await res.body?.cancel()
+      return { ok: false, error: notShared }
+    }
+
+    // Read at most IMPORT_MAX_BYTES, whatever the server claims the size is.
+    const reader = res.body!.getReader()
+    const chunks: Uint8Array[] = []
+    let size = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.byteLength
+      if (size > IMPORT_MAX_BYTES) {
+        await reader.cancel()
+        return { ok: false, error: 'The sheet is larger than 5 MB. Split it into smaller sheets.' }
+      }
+      chunks.push(value)
+    }
+    return { ok: true, data: new TextDecoder().decode(Buffer.concat(chunks)) }
   } catch (e) {
     return caught(e)
   }

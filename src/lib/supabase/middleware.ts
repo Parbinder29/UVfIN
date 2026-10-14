@@ -1,10 +1,24 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { getSupabaseEnv } from '@/lib/env'
+import { getSupabaseEnv, hasSupabaseEnv } from '@/lib/env'
 
 const PUBLIC_PATHS = ['/login']
 
+// Shown instead of a bare "Internal Server Error" when a deployment (usually a
+// Vercel Preview) was built without the Supabase settings.
+const NOT_CONFIGURED_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>UVfIN is not connected</title></head>
+<body style="font-family:system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1rem;line-height:1.5;color:#111;background:#fff">
+<h1 style="font-size:1.25rem">This copy of UVfIN is not connected to its database</h1>
+<p>It was built without the Supabase settings. In Vercel, open <b>Settings &rarr; Environment Variables</b>, tick both Production and Preview for <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>, then redeploy with the build cache turned off.</p>
+</body></html>`
+
 export async function updateSession(request: NextRequest) {
+  if (!hasSupabaseEnv()) {
+    return new NextResponse(NOT_CONFIGURED_PAGE, {
+      status: 503,
+      headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+    })
+  }
   let response = NextResponse.next({ request })
   const { url, anonKey } = getSupabaseEnv()
 
