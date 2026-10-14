@@ -1,5 +1,9 @@
 // Only the two public Supabase values are ever used. The service_role key is
 // never read by this app and must never be added to the environment.
+export function hasSupabaseEnv(): boolean {
+  return !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+}
+
 export function getSupabaseEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
