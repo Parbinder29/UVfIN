@@ -12,7 +12,9 @@ export function getSupabaseEnv() {
       'Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY. Add them to .env.local (or to the Vercel Environment Variables).'
     )
   }
-  return { url, anonKey }
+  // Only the origin: a URL pasted with a path (e.g. ".../rest/v1/") makes every
+  // auth request a 404 "Invalid path specified in request URL".
+  return { url: new URL(url.trim()).origin, anonKey: anonKey.trim() }
 }
 
 export const CURRENCY = process.env.NEXT_PUBLIC_CURRENCY || 'INR'
