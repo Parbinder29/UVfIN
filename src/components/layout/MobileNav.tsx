@@ -5,7 +5,7 @@ import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { SidebarNav } from './SidebarNav'
-import { Wordmark } from './Wordmark'
+import { Logo } from './Wordmark'
 
 export function MobileNav() {
   const [open, setOpen] = useState(false)
@@ -19,7 +19,7 @@ export function MobileNav() {
       <SheetContent side="left" className="w-72 border-sidebar-border bg-sidebar p-4 text-sidebar-foreground">
         <SheetHeader className="p-0 pb-4">
           <SheetTitle className="text-sidebar-foreground">
-            <Wordmark className="text-2xl" />
+            <Logo className="text-2xl" />
           </SheetTitle>
           <SheetDescription className="sr-only">Navigation menu</SheetDescription>
         </SheetHeader>

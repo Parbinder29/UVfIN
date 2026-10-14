@@ -1,5 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Wordmark } from '@/components/layout/Wordmark'
+import { Logo } from '@/components/layout/Wordmark'
 import { LoginForm } from './LoginForm'
 
 export const metadata = { title: 'Sign in · UVfIN' }
@@ -9,8 +9,8 @@ export default function LoginPage() {
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle className="text-4xl">
-            <Wordmark />
+          <CardTitle className="flex justify-center text-4xl">
+            <Logo />
           </CardTitle>
           <CardDescription>Sign in to the UVIN Group finance dashboard</CardDescription>
         </CardHeader>

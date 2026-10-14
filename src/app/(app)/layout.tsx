@@ -4,7 +4,7 @@ import { RoleBadge } from '@/components/layout/RoleBadge'
 import { SidebarNav } from '@/components/layout/SidebarNav'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { UserMenu } from '@/components/layout/UserMenu'
-import { Wordmark } from '@/components/layout/Wordmark'
+import { Logo } from '@/components/layout/Wordmark'
 import { requireUser } from '@/lib/auth'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -20,7 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </a>
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar p-4 text-sidebar-foreground lg:flex">
         <Link href="/dashboard" className="mb-6 px-3 text-2xl text-sidebar-foreground">
-          <Wordmark />
+          <Logo />
         </Link>
         <SidebarNav />
         <p className="mt-auto px-3 text-xs text-sidebar-foreground/60">UVIN Group · uvingroup.com</p>
@@ -30,7 +30,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:px-6">
           <MobileNav />
           <Link href="/dashboard" className="text-xl lg:hidden">
-            <Wordmark />
+            <Logo tagline={false} />
           </Link>
           <div className="ml-auto flex items-center gap-2">
             <RoleBadge role={user.profile.role} />
