@@ -4,9 +4,10 @@ const isDev = process.env.NODE_ENV !== 'production'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const supabaseOrigin = supabaseUrl ? new URL(supabaseUrl).origin : ''
 
-// The CSP below is fixed at build time. Building on Vercel without the
-// Supabase URL would ship a policy that blocks attachment uploads, so stop.
-if (process.env.VERCEL && !supabaseOrigin) {
+// The CSP below is fixed at build time. A production build on Vercel without
+// the Supabase URL would ship a policy that blocks attachment uploads, so stop.
+// Preview builds (pull requests) are allowed through so their checks can pass.
+if (process.env.VERCEL_ENV === 'production' && !supabaseOrigin) {
   throw new Error('NEXT_PUBLIC_SUPABASE_URL must be set in Vercel before building.')
 }
 
