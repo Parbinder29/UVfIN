@@ -20,7 +20,7 @@ export function Wordmark({ className }: { className?: string }) {
   )
 }
 
-/** Full logo: mark, name and (optionally) the "UVIN Management" line. Sized by the font size of its parent. */
+/** Full logo: mark, name and (optionally) the "UVIN Finance" line. Sized by the font size of its parent. */
 export function Logo({ tagline = true, className }: { tagline?: boolean; className?: string }) {
   return (
     <span className={cn('inline-flex items-center gap-[0.4em]', className)}>
@@ -28,7 +28,7 @@ export function Logo({ tagline = true, className }: { tagline?: boolean; classNa
       <span className="flex flex-col items-start leading-none">
         <Wordmark />
         {tagline && (
-          <span className="mt-[0.2em] text-[0.4em] font-semibold tracking-[0.18em] uppercase opacity-60">UVIN Management</span>
+          <span className="mt-[0.2em] text-[0.4em] font-semibold tracking-[0.18em] uppercase opacity-60">UVIN Finance</span>
         )}
       </span>
     </span>
