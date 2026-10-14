@@ -37,11 +37,11 @@ export async function updateSession(request: NextRequest) {
     },
   })
 
-  // getUser() validates the token with Supabase Auth on every request,
-  // so a revoked or forged session is rejected here.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // getClaims() checks the token's signature and expiry (refreshing it when it
+  // is about to expire), so a forged or expired session is rejected here. With
+  // Supabase's asymmetric signing keys this needs no round trip to Supabase Auth.
+  const { data } = await supabase.auth.getClaims()
+  const user = data?.claims.sub ? data.claims : null
 
   const { pathname } = request.nextUrl
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))

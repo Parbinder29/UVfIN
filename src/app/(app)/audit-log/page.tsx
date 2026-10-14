@@ -4,7 +4,7 @@ import { AuditTable } from '@/components/audit/AuditTable'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { PaginationBar } from '@/components/tables/PaginationBar'
-import { getProfileNames, requireUser } from '@/lib/auth'
+import { getProfileNames, requireUserWith } from '@/lib/auth'
 import { AUDIT_ACTIONS, AUDIT_TABLES, getAuditLog, getInvestorSummaries } from '@/lib/queries'
 
 export const metadata = { title: 'Audit Log · UVfIN' }
@@ -12,7 +12,6 @@ export const metadata = { title: 'Audit Log · UVfIN' }
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)
 
 export default async function AuditLogPage(props: PageProps<'/audit-log'>) {
-  await requireUser()
   const sp = await props.searchParams
   const pick = <T extends string>(v: string | undefined, allowed: readonly T[]) => (v && (allowed as readonly string[]).includes(v) ? (v as T) : null)
   const date = (v: string | undefined) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null)
@@ -25,7 +24,9 @@ export default async function AuditLogPage(props: PageProps<'/audit-log'>) {
   }
   const page = z.coerce.number().int().min(1).max(100000).safeParse(first(sp.page)).data ?? 1
 
-  const [{ rows, count }, names, investors] = await Promise.all([getAuditLog(filters, page), getProfileNames(), getInvestorSummaries()])
+  const [, [{ rows, count }, names, investors]] = await requireUserWith(
+    Promise.all([getAuditLog(filters, page), getProfileNames(), getInvestorSummaries()])
+  )
   const investorNames = Object.fromEntries(investors.map((i) => [i.id, i.full_name]))
 
   return (

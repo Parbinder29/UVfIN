@@ -41,6 +41,12 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  experimental: {
+    // Reuse a page visited in the last 30 s when navigating back to it, instead
+    // of waiting on the server again. Saving or deleting (revalidatePath) still
+    // refreshes it straight away.
+    staleTimes: { dynamic: 30 },
+  },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }]
   },

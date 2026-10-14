@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { getProfileNames, requireUser } from '@/lib/auth'
+import { getProfileNames, requireUserWith } from '@/lib/auth'
 import { formatCurrency, formatDateTime } from '@/lib/format'
 import { parseListParams } from '@/lib/list-params'
 import { INVESTMENT_SORTS, getInvestments, getInvestorSummary } from '@/lib/queries'
@@ -18,16 +18,15 @@ import { uuidSchema } from '@/lib/validators'
 export const metadata = { title: 'Investor · UVfIN' }
 
 export default async function InvestorDetailPage(props: PageProps<'/investments/investors/[id]'>) {
-  const user = await requireUser()
-  const isManager = user.profile.role === 'finance_manager'
   const { id } = await props.params
   if (!uuidSchema.safeParse(id).success) notFound()
 
-  const investor = await getInvestorSummary(id)
-  if (!investor) notFound()
-
   const filters = { ...parseListParams(await props.searchParams, { sortable: INVESTMENT_SORTS, defaultSort: 'date' }), investor: id }
-  const [{ rows, count }, names] = await Promise.all([getInvestments(filters, { page: filters.page }), getProfileNames()])
+  const [user, [investor, { rows, count }, names]] = await requireUserWith(
+    Promise.all([getInvestorSummary(id), getInvestments(filters, { page: filters.page }), getProfileNames()])
+  )
+  if (!investor) notFound()
+  const isManager = user.profile.role === 'finance_manager'
   const self = [{ id: investor.id, full_name: investor.full_name, is_active: investor.is_active }]
 
   return (

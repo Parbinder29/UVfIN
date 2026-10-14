@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { getProfileNames, requireManager, requireReader } from '@/lib/auth'
-import { ATTACHMENT_MAX_BYTES } from '@/lib/constants'
+import { ATTACHMENT_MAX_BYTES, PAGE_SIZE } from '@/lib/constants'
 import { toCSV } from '@/lib/csv'
 import { formatDate } from '@/lib/format'
 import { IMPORT_MAX_BYTES, IMPORT_MAX_ROWS, parseGoogleSheetUrl } from '@/lib/import'
@@ -73,6 +73,29 @@ export async function deleteLedgerEntry(key: unknown, id: unknown): Promise<Acti
     if (!data?.length) return { ok: false, error: 'Record not found. It may already be deleted.' }
     revalidate(k)
     return { ok: true }
+  } catch (e) {
+    return caught(e)
+  }
+}
+
+/** Delete several entries at once (soft delete, like single delete). Each one still gets its own audit log entry. */
+export async function deleteLedgerEntries(key: unknown, ids: unknown): Promise<ActionResult<number>> {
+  try {
+    await requireManager()
+    const k = ledgerKey.parse(key)
+    const list = z.array(uuidSchema).min(1).max(PAGE_SIZE).safeParse(ids)
+    if (!list.success) return { ok: false, error: `Select between 1 and ${PAGE_SIZE} rows.` }
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from(k)
+      .update({ is_deleted: true })
+      .in('id', [...new Set(list.data)])
+      .eq('is_deleted', false)
+      .select('id')
+    if (error) return dbError(error)
+    if (!data?.length) return { ok: false, error: 'Those records were not found. They may already be deleted.' }
+    revalidate(k)
+    return { ok: true, data: data.length }
   } catch (e) {
     return caught(e)
   }

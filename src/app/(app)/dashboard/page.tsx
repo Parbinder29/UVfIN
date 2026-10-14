@@ -8,7 +8,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { getProfileNames, requireUser } from '@/lib/auth'
+import { getProfileNames, requireUserWith } from '@/lib/auth'
 import { SECTION_LABELS } from '@/lib/constants'
 import { PRESET_LABELS } from '@/lib/dates'
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/format'
@@ -21,9 +21,10 @@ export const metadata = { title: 'Dashboard · UVfIN' }
 const SECTION_PATHS = { expenses: '/money-spent', earnings: '/earnings', investments: '/investments' } as const
 
 export default async function DashboardPage(props: PageProps<'/dashboard'>) {
-  await requireUser()
   const f = parseListParams(await props.searchParams, { sortable: [], defaultSort: 'date', defaultPreset: 'this-month' })
-  const [s, activity, names] = await Promise.all([getDashboardSummary(f.from, f.to), getRecentActivity(), getProfileNames()])
+  const [, [s, activity, names]] = await requireUserWith(
+    Promise.all([getDashboardSummary(f.from, f.to), getRecentActivity(), getProfileNames()])
+  )
   const net = s.total_earnings - s.total_spent
   const monthNet = s.month_earnings - s.month_spent
   const rangeLabel =

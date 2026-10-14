@@ -8,16 +8,15 @@ import { AddInvestorButton, InvestorRowActions } from '@/components/tables/Inves
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { requireUser } from '@/lib/auth'
+import { requireUserWith } from '@/lib/auth'
 import { formatCurrency, formatDateTime } from '@/lib/format'
 import { getInvestorSummaries } from '@/lib/queries'
 
 export const metadata = { title: 'Investors · UVfIN' }
 
 export default async function InvestorsPage() {
-  const user = await requireUser()
+  const [user, investors] = await requireUserWith(getInvestorSummaries())
   const isManager = user.profile.role === 'finance_manager'
-  const investors = await getInvestorSummaries()
   const total = investors.reduce((s, i) => s + i.total_invested, 0)
 
   return (
