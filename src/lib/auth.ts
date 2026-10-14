@@ -10,21 +10,24 @@ export interface CurrentUser {
   profile: Profile | null
 }
 
-/** The signed-in user and their profile, verified with Supabase Auth. Cached per request. */
+/**
+ * The signed-in user and their profile. The session token's signature and
+ * expiry are verified (getClaims), which with Supabase's asymmetric signing
+ * keys happens here without a round trip to Supabase Auth. Cached per request.
+ */
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return null
+  const { data } = await supabase.auth.getClaims()
+  const claims = data?.claims
+  if (!claims?.sub) return null
 
   const { data: profile } = await supabase
     .from('profiles')
     .select('id, full_name, role')
-    .eq('id', user.id)
+    .eq('id', claims.sub)
     .maybeSingle()
 
-  return { id: user.id, email: user.email ?? '', profile: (profile as Profile | null) ?? null }
+  return { id: claims.sub, email: typeof claims.email === 'string' ? claims.email : '', profile: (profile as Profile | null) ?? null }
 })
 
 /** For pages: signed in with a profile, otherwise redirect. */
@@ -33,6 +36,17 @@ export async function requireUser() {
   if (!user) redirect('/login')
   if (!user.profile) redirect('/no-access')
   return { ...user, profile: user.profile }
+}
+
+/**
+ * requireUser(), with the page's data loading at the same time instead of
+ * after it (RLS guards the data either way). A redirect to /login or
+ * /no-access still wins over any error from the data.
+ */
+export async function requireUserWith<T>(data: Promise<T>) {
+  data.catch(() => {})
+  const user = await requireUser()
+  return [user, await data] as const
 }
 
 export class AuthError extends Error {}

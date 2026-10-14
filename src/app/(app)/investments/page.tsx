@@ -10,7 +10,7 @@ import { AddInvestmentButton, InvestmentRowActions } from '@/components/tables/I
 import { PaginationBar } from '@/components/tables/PaginationBar'
 import { SortHeader } from '@/components/tables/SortHeader'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { getProfileNames, requireUser } from '@/lib/auth'
+import { getProfileNames, requireUserWith } from '@/lib/auth'
 import { PAYMENT_METHODS } from '@/lib/constants'
 import { formatCurrency, formatDateTime } from '@/lib/format'
 import { parseListParams } from '@/lib/list-params'
@@ -19,16 +19,17 @@ import { INVESTMENT_SORTS, getFilteredTotal, getInvestments, getInvestorSummarie
 export const metadata = { title: 'Investments · UVfIN' }
 
 export default async function InvestmentsPage(props: PageProps<'/investments'>) {
-  const user = await requireUser()
-  const isManager = user.profile.role === 'finance_manager'
   const filters = parseListParams(await props.searchParams, { sortable: INVESTMENT_SORTS, defaultSort: 'date', methods: PAYMENT_METHODS })
 
-  const [{ rows, count }, total, investors, names] = await Promise.all([
-    getInvestments(filters, { page: filters.page }),
-    getFilteredTotal('investments', filters),
-    getInvestorSummaries(),
-    getProfileNames(),
-  ])
+  const [user, [{ rows, count }, total, investors, names]] = await requireUserWith(
+    Promise.all([
+      getInvestments(filters, { page: filters.page }),
+      getFilteredTotal('investments', filters),
+      getInvestorSummaries(),
+      getProfileNames(),
+    ])
+  )
+  const isManager = user.profile.role === 'finance_manager'
   const investorNames = Object.fromEntries(investors.map((i) => [i.id, i.full_name]))
   const choices = investors.map((i) => ({ id: i.id, full_name: i.full_name, is_active: i.is_active }))
 

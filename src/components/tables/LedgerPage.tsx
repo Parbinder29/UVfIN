@@ -4,7 +4,7 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { getProfileNames, requireUser } from '@/lib/auth'
+import { getProfileNames, requireUserWith } from '@/lib/auth'
 import { PAYMENT_METHODS } from '@/lib/constants'
 import { formatCurrency, formatDate } from '@/lib/format'
 import { LEDGERS, LEDGER_SORTS } from '@/lib/ledger'
@@ -14,6 +14,7 @@ import { ExportButton } from './ExportButton'
 import { FilterBar } from './FilterBar'
 import { ImportLedgerButton } from './ImportLedgerButton'
 import { AddLedgerButton, LedgerRowActions } from './LedgerControls'
+import { LedgerSelection, RowCheckbox, SelectAllCheckbox, SelectionBar } from './LedgerSelection'
 import { PaginationBar } from './PaginationBar'
 import { SortHeader } from './SortHeader'
 
@@ -25,16 +26,13 @@ export async function LedgerPage({
   ledger: 'expenses' | 'earnings'
   searchParams: Record<string, string | string[] | undefined>
 }) {
-  const user = await requireUser()
-  const isManager = user.profile.role === 'finance_manager'
   const cfg = LEDGERS[ledger]
   const filters = parseListParams(searchParams, { sortable: LEDGER_SORTS, defaultSort: 'date', kinds: cfg.kinds, methods: PAYMENT_METHODS })
 
-  const [{ rows, count }, total, names] = await Promise.all([
-    getLedgerRows(cfg, filters, { page: filters.page }),
-    getFilteredTotal(cfg.table, filters),
-    getProfileNames(),
-  ])
+  const [user, [{ rows, count }, total, names]] = await requireUserWith(
+    Promise.all([getLedgerRows(cfg, filters, { page: filters.page }), getFilteredTotal(cfg.table, filters), getProfileNames()])
+  )
+  const isManager = user.profile.role === 'finance_manager'
 
   const exportAction = exportLedger.bind(null, ledger)
 
@@ -56,7 +54,9 @@ export async function LedgerPage({
         methods={PAYMENT_METHODS}
       />
 
-      <div className="rounded-lg border bg-card">
+      <LedgerSelection key={rows.map((r) => r.id).join()} ledger={ledger} rows={rows.map((r) => ({ id: r.id, amount: r.amount }))}>
+        {isManager && <SelectionBar />}
+        <div className="rounded-lg border bg-card">
         {rows.length === 0 ? (
           <EmptyState
             title={count === 0 && filters.page === 1 ? `No ${cfg.title.toLowerCase()} found` : 'No rows on this page'}
@@ -66,6 +66,7 @@ export async function LedgerPage({
           <Table>
             <TableHeader>
               <TableRow>
+                {isManager && <TableHead className="w-10"><SelectAllCheckbox /></TableHead>}
                 <TableHead><SortHeader label="Date" sortKey="date" /></TableHead>
                 <TableHead><SortHeader label={cfg.partyLabel} sortKey="party" /></TableHead>
                 <TableHead><SortHeader label={cfg.kindLabel} sortKey="kind" /></TableHead>
@@ -81,6 +82,11 @@ export async function LedgerPage({
             <TableBody>
               {rows.map((r) => (
                 <TableRow key={r.id}>
+                  {isManager && (
+                    <TableCell>
+                      <RowCheckbox id={r.id} label={`${r.party || cfg.singular} on ${formatDate(r.date)}, ${formatCurrency(r.amount)}`} />
+                    </TableCell>
+                  )}
                   <TableCell className="whitespace-nowrap">{formatDate(r.date)}</TableCell>
                   <TableCell className="max-w-48 truncate font-medium" title={r.party ?? ''}>{r.party || '—'}</TableCell>
                   <TableCell><Badge variant="secondary">{r.kind}</Badge></TableCell>
@@ -100,14 +106,15 @@ export async function LedgerPage({
             </TableBody>
             <TableFooter>
               <TableRow>
-                <TableCell colSpan={6}>Total of {count} filtered {count === 1 ? 'row' : 'rows'}</TableCell>
+                <TableCell colSpan={isManager ? 7 : 6}>Total of {count} filtered {count === 1 ? 'row' : 'rows'}</TableCell>
                 <TableCell className="text-right tabular-nums whitespace-nowrap">{formatCurrency(total)}</TableCell>
                 <TableCell colSpan={isManager ? 3 : 2} />
               </TableRow>
             </TableFooter>
           </Table>
         )}
-      </div>
+        </div>
+      </LedgerSelection>
       <PaginationBar page={filters.page} count={count} />
     </div>
   )
