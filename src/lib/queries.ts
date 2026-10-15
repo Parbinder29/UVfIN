@@ -5,7 +5,7 @@ import { endOfDayExclusiveInTz, startOfDayInTz } from '@/lib/dates'
 import { TIMEZONE } from '@/lib/env'
 import { ledgerSortColumn, type LedgerConfig, type LedgerRow } from '@/lib/ledger'
 import type { ListFilters } from '@/lib/list-params'
-import type { AuditEntry, Investment, InvestorSummary } from '@/types'
+import type { AuditEntry, Investment, InvestorSummary, Profile } from '@/types'
 
 type Paging = { page: number } | { exportAll: true }
 
@@ -160,6 +160,19 @@ export async function getAuditLog(
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
   if (error) throw new Error('Could not load the audit log.')
   return { rows: (data ?? []) as AuditEntry[], count: count ?? 0 }
+}
+
+// ---------------------------------------------------------------- team
+
+/** Everyone with access, finance managers first. */
+export async function getTeam(): Promise<Profile[]> {
+  const supabase = await createClient()
+  const query = (cols: string) => supabase.from('profiles').select(cols).order('role').order('full_name').limit(100)
+  const first = await query('id, full_name, role, designation')
+  // Before migration 006 there is no designation column.
+  const { data, error } = first.error?.code === '42703' ? await query('id, full_name, role') : first
+  if (error) throw new Error('Could not load the team.')
+  return ((data ?? []) as unknown as Profile[]).map((p) => ({ ...p, designation: p.designation ?? null }))
 }
 
 // ---------------------------------------------------------------- dashboard

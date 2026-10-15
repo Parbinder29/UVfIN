@@ -1,4 +1,4 @@
-import { BarChart3, FileClock, LayoutDashboard, TrendingUp, Users, Wallet } from 'lucide-react'
+import { BarChart3, FileClock, LayoutDashboard, Settings, TrendingUp, Users, Wallet } from 'lucide-react'
 
 export const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -7,4 +7,5 @@ export const NAV_ITEMS = [
   { href: '/investments', label: 'Investments', icon: BarChart3, exact: true },
   { href: '/investments/investors', label: 'Investors', icon: Users },
   { href: '/audit-log', label: 'Audit Log', icon: FileClock },
+  { href: '/settings', label: 'Settings', icon: Settings },
 ] as const
