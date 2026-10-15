@@ -4,6 +4,8 @@ export interface Profile {
   id: string
   full_name: string
   role: UserRole
+  /** Job title shown in the dashboard (e.g. Owner, Investor). Null until migration 006 is run. */
+  designation: string | null
 }
 
 export interface Expense {

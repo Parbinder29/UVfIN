@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-export function UserMenu({ name, email }: { name: string; email: string }) {
+export function UserMenu({ name, email, designation }: { name: string; email: string; designation: string | null }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -24,6 +24,7 @@ export function UserMenu({ name, email }: { name: string; email: string }) {
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="font-normal">
           <div className="truncate font-medium">{name}</div>
+          {designation && <div className="truncate text-xs text-brand-accent">{designation}</div>}
           <div className="truncate text-xs text-muted-foreground">{email}</div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
