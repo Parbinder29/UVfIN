@@ -53,6 +53,12 @@ With this off, nobody can create an account by themselves. Only you, in the dash
 
 A user who can log in but has no row here sees a "No access yet" page and can't see any data.
 
+### Adding people later
+
+Run `supabase/migrations/006_designation.sql` once. After that, use the ready-made queries in
+`supabase/admin/manage-users.sql` to add a user with a password, make someone Owner/Admin,
+Finance Manager or view-only (e.g. Investor), change a password, list everyone, or remove access.
+
 ## 6. Copy the two keys the app needs
 
 Go to **Project Settings → API** (or **Data API / API Keys** on newer dashboards) and copy:

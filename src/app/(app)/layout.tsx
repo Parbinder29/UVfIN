@@ -33,9 +33,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <Logo tagline={false} />
           </Link>
           <div className="ml-auto flex items-center gap-2">
-            <RoleBadge role={user.profile.role} />
+            <RoleBadge role={user.profile.role} designation={user.profile.designation} />
             <ThemeToggle />
-            <UserMenu name={user.profile.full_name} email={user.email} />
+            <UserMenu name={user.profile.full_name} email={user.email} designation={user.profile.designation} />
           </div>
         </header>
         <main id="main" className="flex-1 px-4 py-6 lg:px-6">

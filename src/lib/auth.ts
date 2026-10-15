@@ -21,13 +21,16 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const claims = data?.claims
   if (!claims?.sub) return null
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id, full_name, role')
-    .eq('id', claims.sub)
-    .maybeSingle()
+  const profileQuery = (cols: string) => supabase.from('profiles').select(cols).eq('id', claims.sub).maybeSingle()
+  const first = await profileQuery('id, full_name, role, designation')
+  // Before migration 006 there is no designation column; don't lock everyone out.
+  const { data: profile } = first.error?.code === '42703' ? await profileQuery('id, full_name, role') : first
 
-  return { id: claims.sub, email: typeof claims.email === 'string' ? claims.email : '', profile: (profile as Profile | null) ?? null }
+  return {
+    id: claims.sub,
+    email: typeof claims.email === 'string' ? claims.email : '',
+    profile: profile ? ({ designation: null, ...(profile as object) } as Profile) : null,
+  }
 })
 
 /** For pages: signed in with a profile, otherwise redirect. */
