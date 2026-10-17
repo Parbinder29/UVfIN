@@ -9,6 +9,10 @@ export function dbError(error: PostgrestError | null, fallback = 'Something went
   if (!error) return { ok: false, error: fallback }
   // Log only the code, never row data.
   console.error('db error', error.code)
+  // A column the app sends doesn't exist yet: a migration hasn't been run.
+  if (error.code === 'PGRST204' || error.code === '42703') {
+    return { ok: false, error: 'The database needs an update first. Run the newest file in supabase/migrations in the Supabase SQL Editor.' }
+  }
   if (error.code === '42501') return { ok: false, error: 'You are not allowed to make this change.' }
   if (error.message?.includes('Investor is inactive')) return { ok: false, error: 'That investor is inactive. Reactivate them first.' }
   if (error.message?.includes('Deleted records cannot be changed')) return { ok: false, error: 'This record was deleted and can no longer be changed.' }

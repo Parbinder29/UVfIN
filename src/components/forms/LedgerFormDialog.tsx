@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { PAYMENT_METHODS } from '@/lib/constants'
+import { EXPENSE_STATUSES, PAYMENT_METHODS } from '@/lib/constants'
 import { todayInTz } from '@/lib/dates'
 import type { LedgerRow } from '@/lib/ledger'
 import { earningSchema, expenseSchema } from '@/lib/validators'
@@ -31,6 +31,9 @@ export interface LedgerFormConfig {
   partyCol: string
   partyLabel: string
   partyRequired: boolean
+  methodLabel: string
+  descriptionLabel: string
+  sheetColumns: boolean
 }
 
 type Values = Record<string, string>
@@ -59,6 +62,7 @@ export function LedgerFormDialog({
     description: row?.description ?? '',
     payment_method: row?.payment_method ?? '',
     reference_no: row?.reference_no ?? '',
+    ...(cfg.sheetColumns ? { paid_by: row?.paid_by ?? '', paid_from: row?.paid_from ?? '', status: row?.status ?? '' } : {}),
   }
 
   const form = useForm<Values>({
@@ -181,7 +185,7 @@ export function LedgerFormDialog({
               name="payment_method"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Payment method</FormLabel>
+                  <FormLabel>{cfg.methodLabel}</FormLabel>
                   <Select value={field.value || NONE} onValueChange={(v) => field.onChange(v === NONE ? '' : v)}>
                     <FormControl>
                       <SelectTrigger className="w-full">
@@ -201,6 +205,54 @@ export function LedgerFormDialog({
                 </FormItem>
               )}
             />
+            {cfg.sheetColumns && (
+              <>
+                <FormField
+                  control={form.control}
+                  name="paid_by"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Paid By</FormLabel>
+                      <FormControl>
+                        <Input maxLength={100} placeholder="Who paid, e.g. Vinay" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="paid_from"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Credit Ledger</FormLabel>
+                      <FormControl>
+                        <Input maxLength={200} placeholder="e.g. Bank - UPI Wallet" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Status</FormLabel>
+                      <FormControl>
+                        <Input maxLength={50} list="expense-statuses" placeholder="e.g. Existing" {...field} />
+                      </FormControl>
+                      <datalist id="expense-statuses">
+                        {EXPENSE_STATUSES.map((st) => (
+                          <option key={st} value={st} />
+                        ))}
+                      </datalist>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
             <FormField
               control={form.control}
               name="reference_no"
@@ -219,7 +271,7 @@ export function LedgerFormDialog({
               name="description"
               render={({ field }) => (
                 <FormItem className="sm:col-span-2">
-                  <FormLabel>Description</FormLabel>
+                  <FormLabel>{cfg.descriptionLabel}</FormLabel>
                   <FormControl>
                     <Textarea rows={3} maxLength={1000} {...field} />
                   </FormControl>

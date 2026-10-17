@@ -266,7 +266,26 @@ export async function exportLedger(key: unknown, params: unknown): Promise<Actio
     const raw = z.record(z.string()).parse(params ?? {})
     const filters = parseListParams(raw, { sortable: LEDGER_SORTS, defaultSort: 'date', kinds: cfg.kinds, methods: PAYMENT_METHODS })
     const [{ rows }, names] = await Promise.all([getLedgerRows(cfg, filters, { exportAll: true }), getProfileNames()])
-    const csv = toCSV<LedgerRow>(rows, [
+    const added = (r: LedgerRow) => names[r.created_by] ?? ''
+    const attachment = (r: LedgerRow) => (r.attachment_path ? 'Yes' : '')
+    // Money Spent exports in the company's accounts-sheet layout, so it can be imported straight back.
+    const csv = cfg.sheetColumns
+      ? toCSV<LedgerRow & { sr: number }>(rows.map((r, i) => ({ ...r, sr: i + 1 })), [
+          { label: 'Sr No', value: (r) => r.sr },
+          { label: 'Item / Party', value: (r) => r.party },
+          { label: 'Date', value: (r) => formatDate(r.date) },
+          { label: 'Amount (₹)', value: (r) => r.amount },
+          { label: 'Paid Via', value: (r) => r.payment_method },
+          { label: 'Paid By', value: (r) => r.paid_by },
+          { label: 'Debit Ledger', value: (r) => r.kind },
+          { label: 'Credit Ledger', value: (r) => r.paid_from },
+          { label: 'Note', value: (r) => r.description },
+          { label: 'Status', value: (r) => r.status },
+          { label: 'Reference No', value: (r) => r.reference_no },
+          { label: 'Attachment', value: attachment },
+          { label: 'Added By', value: added },
+        ])
+      : toCSV<LedgerRow>(rows, [
       { label: 'Date', value: (r) => formatDate(r.date) },
       { label: cfg.partyLabel, value: (r) => r.party },
       { label: cfg.kindLabel, value: (r) => r.kind },
@@ -274,8 +293,8 @@ export async function exportLedger(key: unknown, params: unknown): Promise<Actio
       { label: 'Payment Method', value: (r) => r.payment_method },
       { label: 'Reference No', value: (r) => r.reference_no },
       { label: 'Amount', value: (r) => r.amount },
-      { label: 'Attachment', value: (r) => (r.attachment_path ? 'Yes' : '') },
-      { label: 'Added By', value: (r) => names[r.created_by] ?? '' },
+      { label: 'Attachment', value: attachment },
+      { label: 'Added By', value: added },
     ])
     return { ok: true, data: csv }
   } catch (e) {

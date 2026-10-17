@@ -15,29 +15,59 @@ export const IMPORT_MAX_BYTES = 5 * 1024 * 1024
 export type SheetData = unknown[][]
 export type Sheets = { sheet: string; data: SheetData }[]
 
-type Field = 'date' | 'amount' | 'kind' | 'party' | 'description' | 'payment_method' | 'reference_no'
+type Field =
+  | 'serial'
+  | 'date'
+  | 'amount'
+  | 'kind'
+  | 'party'
+  | 'description'
+  | 'payment_method'
+  | 'reference_no'
+  | 'paid_by'
+  | 'paid_from'
+  | 'status'
 
 /** Accepted column titles, compared case-insensitively with spaces and punctuation ignored. */
-function aliases(cfg: LedgerConfig): Record<Field, string[]> {
-  return {
+function aliases(cfg: LedgerConfig): Partial<Record<Field, string[]>> {
+  const common = {
+    serial: ['sr no', 'sr', 's no', 'sl no', 'serial no', 'no'],
     date: ['date', `${cfg.singular} date`, 'transaction date', 'txn date'],
     amount: ['amount', 'amount inr', 'amount rs', 'value', 'total'],
-    kind: cfg.key === 'expenses' ? ['category', 'expense category', 'type'] : ['source', 'earning source', 'type'],
-    party:
-      cfg.key === 'expenses'
-        ? ['payee', 'paid to', 'vendor', 'supplier']
-        : ['client', 'client name', 'customer', 'received from'],
-    description: ['description', 'details', 'notes', 'narration', 'remarks'],
-    payment_method: ['payment method', 'method', 'mode', 'payment mode'],
+    description: ['description', 'details', 'note', 'notes', 'narration', 'remarks'],
+    payment_method: ['payment method', 'paid via', 'via', 'method', 'mode', 'payment mode'],
     reference_no: ['reference no', 'reference', 'ref no', 'ref', 'reference number', 'transaction id', 'utr'],
+  }
+  if (cfg.key === 'expenses') {
+    return {
+      ...common,
+      kind: ['debit ledger', 'ledger', 'expense head', 'head', 'category', 'expense category', 'type'],
+      party: ['item / party', 'item', 'party', 'particulars', 'payee', 'paid to', 'vendor', 'supplier'],
+      paid_by: ['paid by'],
+      paid_from: ['credit ledger', 'paid from'],
+      status: ['status'],
+    }
+  }
+  return {
+    ...common,
+    kind: ['source', 'earning source', 'type'],
+    party: ['client', 'client name', 'customer', 'received from'],
   }
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
 
-/** Column titles for the template, in order. Required ones first. */
+/** Column titles for the template, in order. Money Spent uses the company's accounts sheet layout. */
 export function templateHeaders(cfg: LedgerConfig): string[] {
+  if (cfg.sheetColumns) {
+    return ['Sr No', 'Item / Party', 'Date', 'Amount (₹)', 'Paid Via', 'Paid By', 'Debit Ledger', 'Credit Ledger', 'Note', 'Status']
+  }
   return ['Date', 'Amount', cfg.kindLabel, cfg.partyLabel, 'Description', 'Payment Method', 'Reference No']
+}
+
+/** "Provisional. Ref 288101. ..." → "288101", so rows that differ only by reference aren't treated as duplicates. */
+function refFromNote(note: string): string {
+  return note.match(/\bRefs?\b\.?\s*(?:no\.?\s*)?([A-Za-z0-9][A-Za-z0-9/-]*)/i)?.[1] ?? ''
 }
 
 // --- CSV ---------------------------------------------------------------------
@@ -119,9 +149,6 @@ function matchOption(v: unknown, options: readonly string[]): string {
 const METHOD_ALIASES: Record<string, string> = {
   bank: 'Bank Transfer',
   banktransfer: 'Bank Transfer',
-  neft: 'Bank Transfer',
-  rtgs: 'Bank Transfer',
-  imps: 'Bank Transfer',
   netbanking: 'Bank Transfer',
   creditcard: 'Card',
   debitcard: 'Card',
@@ -179,7 +206,7 @@ export function parseLedgerSheet(cfg: LedgerConfig, data: SheetData): ParsedShee
     const title = text(c)
     const field = lookup.get(norm(title))
     if (field && !columns.has(field)) columns.set(field, i)
-    else if (title) ignored.push(title)
+    else if (title && !/^entries$/i.test(title)) ignored.push(title)
   })
   if (!columns.has('kind')) return { rows: [], ignored, error: `The sheet needs a "${cfg.kindLabel}" column.` }
   if (cfg.partyRequired && !columns.has('party')) return { rows: [], ignored, error: `The sheet needs a "${cfg.partyLabel}" column.` }
@@ -189,26 +216,50 @@ export function parseLedgerSheet(cfg: LedgerConfig, data: SheetData): ParsedShee
 
   const rows: ImportRow[] = []
   data.slice(headerIndex + 1).forEach((row, i) => {
-    if (row.every((c) => c == null || String(c).trim() === '')) return
+    // A row with only a serial number (or nothing) is a blank line.
+    if (row.every((c, idx) => idx === columns.get('serial') || c == null || String(c).trim() === '')) return
+    const description = text(cell(row, 'description'))
     const values: Record<string, unknown> = {
       [cfg.dateCol]: toIsoDate(cell(row, 'date')),
       amount: toAmount(cell(row, 'amount')),
       [cfg.kindCol]: matchOption(cell(row, 'kind'), cfg.kinds),
       [cfg.partyCol]: text(cell(row, 'party')),
-      description: text(cell(row, 'description')),
+      description,
       payment_method: toMethod(cell(row, 'payment_method')),
-      reference_no: text(cell(row, 'reference_no')),
+      reference_no: text(cell(row, 'reference_no')) || refFromNote(description),
+    }
+    if (cfg.sheetColumns) {
+      values.paid_by = text(cell(row, 'paid_by'))
+      values.paid_from = text(cell(row, 'paid_from'))
+      values.status = text(cell(row, 'status'))
+    }
+    const kind = String(values[cfg.kindCol])
+    // A debit to a bank account is money coming in, or moving between own accounts.
+    if (cfg.key === 'expenses' && !cfg.kinds.includes(kind) && /^bank\b/i.test(kind)) {
+      rows.push({
+        line: headerIndex + i + 2,
+        values,
+        errors: [`Debit Ledger "${kind}" is money coming into a bank account or a transfer between accounts, not money spent. Leave it out, or add it under Earnings or Investments.`],
+      })
+      return
     }
     const result = schema.safeParse(values)
     const errors = result.success
       ? []
       : result.error.issues.map((issue) => {
           const field = String(issue.path[0])
-          if (field === cfg.kindCol) return `${cfg.kindLabel} "${values[field]}" is not one of: ${cfg.kinds.join(', ')}`
-          if (field === 'payment_method') return `Payment method "${values[field]}" is not one of: ${PAYMENT_METHODS.join(', ')}`
+          if (field === cfg.kindCol) {
+            if (!kind) return `${cfg.kindLabel} is empty`
+            return cfg.kinds.length > 12
+              ? `${cfg.kindLabel} "${kind}" is not in the list (see the template's "Allowed values" tab)`
+              : `${cfg.kindLabel} "${kind}" is not one of: ${cfg.kinds.join(', ')}`
+          }
+          if (field === 'payment_method') return `${cfg.methodLabel} "${values[field]}" is not one of: ${PAYMENT_METHODS.join(', ')}`
+          if (field === cfg.dateCol && !values[field]) return 'Date is missing'
+          if (field === 'amount' && values[field] === '') return 'Amount is missing'
           return issue.message
         })
-    rows.push({ line: headerIndex + i + 2, values: result.success ? result.data : values, errors })
+    rows.push({ line: headerIndex + i + 2, values: result.success ? result.data : values, errors: [...new Set(errors)] })
   })
   return { rows, ignored }
 }

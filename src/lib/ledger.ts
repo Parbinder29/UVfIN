@@ -14,6 +14,10 @@ export interface LedgerConfig {
   partyCol: 'payee' | 'client_name'
   partyLabel: string
   partyRequired: boolean
+  methodLabel: string
+  descriptionLabel: string
+  /** Money Spent also has Paid By, Credit Ledger and Status, matching the company's accounts sheet. */
+  sheetColumns: boolean
   searchCols: readonly string[]
 }
 
@@ -26,11 +30,14 @@ export const LEDGERS: Record<'expenses' | 'earnings', LedgerConfig> = {
     path: '/money-spent',
     dateCol: 'expense_date',
     kindCol: 'category',
-    kindLabel: 'Category',
+    kindLabel: 'Debit Ledger',
     kinds: EXPENSE_CATEGORIES,
     partyCol: 'payee',
-    partyLabel: 'Payee',
+    partyLabel: 'Item / Party',
     partyRequired: true,
+    methodLabel: 'Paid Via',
+    descriptionLabel: 'Note',
+    sheetColumns: true,
     searchCols: ['payee', 'description', 'reference_no'],
   },
   earnings: {
@@ -46,6 +53,9 @@ export const LEDGERS: Record<'expenses' | 'earnings', LedgerConfig> = {
     partyCol: 'client_name',
     partyLabel: 'Client',
     partyRequired: false,
+    methodLabel: 'Payment Method',
+    descriptionLabel: 'Description',
+    sheetColumns: false,
     searchCols: ['client_name', 'description', 'reference_no'],
   },
 }
@@ -80,4 +90,8 @@ export interface LedgerRow {
   reference_no: string | null
   attachment_path: string | null
   created_by: string
+  /** Money Spent only (null elsewhere, or before migration 007). */
+  paid_by: string | null
+  paid_from: string | null
+  status: string | null
 }

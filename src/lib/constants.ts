@@ -1,18 +1,32 @@
 // Edit these lists to change the options shown in the forms and filters.
 
+/** Debit ledgers for Money Spent, as used in the company's accounts sheet. */
 export const EXPENSE_CATEGORIES = [
-  'Salaries',
+  'Office Equipment',
+  'Furniture & Fixtures',
+  'Networking & Wifi Equipment',
+  'Telephone, Internet & SIM Charges',
+  'Repairs & Maintenance - Electrical',
+  'Carpentry & Woodwork Expenses',
+  'Office Interior, Painting & Decor',
+  'Signage, Flex & Branding Expenses',
+  'Advertising & Business Promotion',
+  'Printing & Stationery',
+  'Office & Miscellaneous Expenses',
+  'Advance to Suppliers',
+  'Bank Charges',
+  'Suspense - Unidentified Payments',
+  'Salaries & Wages',
   'Rent',
-  'Utilities',
-  'Marketing',
-  'Software & Tools',
-  'Travel',
-  'Office Supplies',
-  'Taxes',
-  'Vendor Payments',
-  'Maintenance',
-  'Miscellaneous',
+  'Electricity & Water',
+  'Software & Subscriptions',
+  'Travel & Conveyance',
+  'Professional & Legal Fees',
+  'Taxes & Duties',
 ] as const
+
+/** Suggestions for the Status column of Money Spent (any text up to 50 characters is allowed). */
+export const EXPENSE_STATUSES = ['Existing', 'New', 'New - Provisional', 'Confirmed'] as const
 
 export const EARNING_SOURCES = [
   'Product Sales',
@@ -23,7 +37,7 @@ export const EARNING_SOURCES = [
   'Other',
 ] as const
 
-export const PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Card', 'Other'] as const
+export const PAYMENT_METHODS = ['Cash', 'UPI', 'NEFT', 'IMPS', 'RTGS', 'Bank Transfer', 'Cheque', 'Card', 'Other'] as const
 
 export const PAGE_SIZE = 25
 

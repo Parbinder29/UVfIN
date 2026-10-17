@@ -40,11 +40,14 @@ export const uuidSchema = z.string().uuid()
 export const expenseSchema = z.object({
   expense_date: isoDate,
   amount,
-  category: z.enum(EXPENSE_CATEGORIES, { errorMap: () => ({ message: 'Choose a category' }) }),
-  payee: requiredText('Payee', 200),
+  category: z.enum(EXPENSE_CATEGORIES, { errorMap: () => ({ message: 'Choose a debit ledger' }) }),
+  payee: requiredText('Item / Party', 200),
   description: optionalText(1000),
   payment_method: paymentMethod,
   reference_no: optionalText(100),
+  paid_by: optionalText(100),
+  paid_from: optionalText(200),
+  status: optionalText(50),
 })
 
 export const earningSchema = z.object({

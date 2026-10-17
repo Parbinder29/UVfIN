@@ -18,23 +18,28 @@ const orFilter = (cols: readonly string[], q: string) => cols.map((c) => `${c}.i
 
 export async function getLedgerRows(cfg: LedgerConfig, f: ListFilters, paging: Paging) {
   const supabase = await createClient()
-  const cols = `id, ${cfg.dateCol}, amount, ${cfg.kindCol}, ${cfg.partyCol}, description, payment_method, reference_no, attachment_path, created_by, created_at`
-
-  let query = supabase.from(cfg.table).select(cols, { count: 'exact' }).eq('is_deleted', false)
-  if (f.from) query = query.gte(cfg.dateCol, f.from)
-  if (f.to) query = query.lte(cfg.dateCol, f.to)
-  if (f.kind) query = query.eq(cfg.kindCol, f.kind)
-  if (f.method) query = query.eq('payment_method', f.method)
-  if (f.min != null) query = query.gte('amount', f.min)
-  if (f.max != null) query = query.lte('amount', f.max)
-  if (f.q) query = query.or(orFilter(cfg.searchCols, f.q))
-
+  const base = `id, ${cfg.dateCol}, amount, ${cfg.kindCol}, ${cfg.partyCol}, description, payment_method, reference_no, attachment_path, created_by, created_at`
   const [start, end] = range(paging)
-  const { data, count, error } = await query
-    .order(ledgerSortColumn(cfg, f.sort), { ascending: f.dir === 'asc', nullsFirst: false })
-    .order('created_at', { ascending: false })
-    .range(start, end)
 
+  const run = (cols: string) => {
+    let query = supabase.from(cfg.table).select(cols, { count: 'exact' }).eq('is_deleted', false)
+    if (f.from) query = query.gte(cfg.dateCol, f.from)
+    if (f.to) query = query.lte(cfg.dateCol, f.to)
+    if (f.kind) query = query.eq(cfg.kindCol, f.kind)
+    if (f.method) query = query.eq('payment_method', f.method)
+    if (f.min != null) query = query.gte('amount', f.min)
+    if (f.max != null) query = query.lte('amount', f.max)
+    if (f.q) query = query.or(orFilter(cfg.searchCols, f.q))
+    return query
+      .order(ledgerSortColumn(cfg, f.sort), { ascending: f.dir === 'asc', nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .range(start, end)
+  }
+
+  let result = await run(cfg.sheetColumns ? `${base}, paid_by, paid_from, status` : base)
+  // Before migration 007 the Money Spent sheet columns don't exist yet.
+  if (cfg.sheetColumns && result.error?.code === '42703') result = await run(base)
+  const { data, count, error } = result
   if (error) throw new Error(`Could not load ${cfg.title.toLowerCase()}.`)
 
   const rows: LedgerRow[] = ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({
@@ -48,6 +53,9 @@ export async function getLedgerRows(cfg: LedgerConfig, f: ListFilters, paging: P
     reference_no: r.reference_no as string | null,
     attachment_path: r.attachment_path as string | null,
     created_by: r.created_by as string,
+    paid_by: (r.paid_by as string | null) ?? null,
+    paid_from: (r.paid_from as string | null) ?? null,
+    status: (r.status as string | null) ?? null,
   }))
   return { rows, count: count ?? 0 }
 }

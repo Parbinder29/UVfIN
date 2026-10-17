@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { PAYMENT_METHODS } from '@/lib/constants'
+import { EXPENSE_STATUSES, PAYMENT_METHODS } from '@/lib/constants'
 import { formatCurrency, formatDate } from '@/lib/format'
 import {
   IMPORT_MAX_BYTES,
@@ -106,15 +106,18 @@ export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings'
 
   const downloadTemplate = async () => {
     const { default: writeExcelFile } = await import('write-excel-file/browser')
-    const header = templateHeaders(cfg).map((value) => ({ value, fontWeight: 'bold' as const }))
-    const longest = Math.max(cfg.kinds.length, PAYMENT_METHODS.length)
+    const headers = templateHeaders(cfg)
+    const header = headers.map((value) => ({ value, fontWeight: 'bold' as const }))
+    const statuses: readonly string[] = cfg.sheetColumns ? EXPENSE_STATUSES : []
+    const longest = Math.max(cfg.kinds.length, PAYMENT_METHODS.length, statuses.length)
     const allowed = [
-      [{ value: cfg.kindLabel, fontWeight: 'bold' as const }, { value: 'Payment Method', fontWeight: 'bold' as const }],
-      ...Array.from({ length: longest }, (_, i) => [cfg.kinds[i] ?? null, PAYMENT_METHODS[i] ?? null]),
+      [cfg.kindLabel, cfg.methodLabel, ...(statuses.length ? ['Status (suggested)'] : [])].map((value) => ({ value, fontWeight: 'bold' as const })),
+      ...Array.from({ length: longest }, (_, i) => [cfg.kinds[i] ?? null, PAYMENT_METHODS[i] ?? null, ...(statuses.length ? [statuses[i] ?? null] : [])]),
     ]
+    const wide = new Set(['Description', 'Note', 'Item / Party', 'Debit Ledger', 'Credit Ledger'])
     await writeExcelFile([
-      { sheet: cfg.title, data: [header], columns: templateHeaders(cfg).map((h) => ({ width: h === 'Description' ? 40 : 18 })) },
-      { sheet: 'Allowed values', data: allowed, columns: [{ width: 22 }, { width: 18 }] },
+      { sheet: cfg.title, data: [header], columns: headers.map((h) => ({ width: h === 'Sr No' ? 7 : wide.has(h) ? 32 : 14 })) },
+      { sheet: 'Allowed values', data: allowed, columns: [{ width: 36 }, { width: 16 }, { width: 20 }] },
     ]).toFile(`uvfin-${ledger === 'expenses' ? 'money-spent' : 'earnings'}-template.xlsx`)
   }
 
@@ -166,17 +169,14 @@ export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings'
           <DialogHeader>
             <DialogTitle>Import {cfg.title}</DialogTitle>
             <DialogDescription>
-              From an Excel or CSV file, or a Google Sheet. Columns: <strong>Date</strong>, <strong>Amount</strong>,{' '}
-              <strong>{cfg.kindLabel}</strong>
-              {cfg.partyRequired ? (
-                <>
-                  , <strong>{cfg.partyLabel}</strong>
-                </>
-              ) : (
-                `, ${cfg.partyLabel}`
-              )}
-              , and optionally Description, Payment Method, Reference No. Dates are read as day/month/year. You see a preview
-              before anything is saved.
+              From an Excel or CSV file, or a Google Sheet, with these columns:{' '}
+              {templateHeaders(cfg).map((h, i) => (
+                <span key={h}>
+                  {i > 0 && ', '}
+                  {['Date', 'Amount', 'Amount (₹)', cfg.kindLabel].includes(h) || (cfg.partyRequired && h === cfg.partyLabel) ? <strong>{h}</strong> : h}
+                </span>
+              ))}
+              . Bold ones are required. Dates are read as day/month/year. You see a preview before anything is saved.
             </DialogDescription>
           </DialogHeader>
 
@@ -315,7 +315,7 @@ export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings'
                   )}
                   <p className="mt-1 text-muted-foreground">
                     Rows already in UVfIN (same date, amount, {cfg.kindLabel.toLowerCase()}, {cfg.partyLabel.toLowerCase()} and
-                    reference) are skipped.
+                    reference, including a &ldquo;Ref&rdquo; number in the {cfg.descriptionLabel.toLowerCase()}) are skipped.
                   </p>
                 </div>
 

@@ -33,6 +33,7 @@ export async function LedgerPage({
     Promise.all([getLedgerRows(cfg, filters, { page: filters.page }), getFilteredTotal(cfg.table, filters), getProfileNames()])
   )
   const isManager = user.profile.role === 'finance_manager'
+  const sheet = cfg.sheetColumns
 
   const exportAction = exportLedger.bind(null, ledger)
 
@@ -48,7 +49,7 @@ export async function LedgerPage({
       </PageHeader>
 
       <FilterBar
-        searchPlaceholder={`Search ${cfg.partyLabel.toLowerCase()}, description or reference…`}
+        searchPlaceholder={`Search ${cfg.partyLabel.toLowerCase()}, ${cfg.descriptionLabel.toLowerCase()} or reference…`}
         kindLabel={cfg.kindLabel}
         kinds={cfg.kinds}
         methods={PAYMENT_METHODS}
@@ -65,50 +66,97 @@ export async function LedgerPage({
         ) : (
           <Table>
             <TableHeader>
-              <TableRow>
-                {isManager && <TableHead className="w-10"><SelectAllCheckbox /></TableHead>}
-                <TableHead><SortHeader label="Date" sortKey="date" /></TableHead>
-                <TableHead><SortHeader label={cfg.partyLabel} sortKey="party" /></TableHead>
-                <TableHead><SortHeader label={cfg.kindLabel} sortKey="kind" /></TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead><SortHeader label="Payment Method" sortKey="method" /></TableHead>
-                <TableHead>Reference No</TableHead>
-                <TableHead className="text-right"><SortHeader label="Amount" sortKey="amount" align="right" /></TableHead>
-                <TableHead>Attachment</TableHead>
-                <TableHead>Added By</TableHead>
-                {isManager && <TableHead><span className="sr-only">Actions</span></TableHead>}
-              </TableRow>
+              {sheet ? (
+                // Money Spent: same column order as the company's accounts sheet.
+                <TableRow>
+                  {isManager && <TableHead className="w-10"><SelectAllCheckbox /></TableHead>}
+                  <TableHead><SortHeader label={cfg.partyLabel} sortKey="party" /></TableHead>
+                  <TableHead><SortHeader label="Date" sortKey="date" /></TableHead>
+                  <TableHead className="text-right"><SortHeader label="Amount (₹)" sortKey="amount" align="right" /></TableHead>
+                  <TableHead><SortHeader label={cfg.methodLabel} sortKey="method" /></TableHead>
+                  <TableHead>Paid By</TableHead>
+                  <TableHead><SortHeader label={cfg.kindLabel} sortKey="kind" /></TableHead>
+                  <TableHead>Credit Ledger</TableHead>
+                  <TableHead>{cfg.descriptionLabel}</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Attachment</TableHead>
+                  <TableHead>Added By</TableHead>
+                  {isManager && <TableHead><span className="sr-only">Actions</span></TableHead>}
+                </TableRow>
+              ) : (
+                <TableRow>
+                  {isManager && <TableHead className="w-10"><SelectAllCheckbox /></TableHead>}
+                  <TableHead><SortHeader label="Date" sortKey="date" /></TableHead>
+                  <TableHead><SortHeader label={cfg.partyLabel} sortKey="party" /></TableHead>
+                  <TableHead><SortHeader label={cfg.kindLabel} sortKey="kind" /></TableHead>
+                  <TableHead>{cfg.descriptionLabel}</TableHead>
+                  <TableHead><SortHeader label={cfg.methodLabel} sortKey="method" /></TableHead>
+                  <TableHead>Reference No</TableHead>
+                  <TableHead className="text-right"><SortHeader label="Amount" sortKey="amount" align="right" /></TableHead>
+                  <TableHead>Attachment</TableHead>
+                  <TableHead>Added By</TableHead>
+                  {isManager && <TableHead><span className="sr-only">Actions</span></TableHead>}
+                </TableRow>
+              )}
             </TableHeader>
             <TableBody>
-              {rows.map((r) => (
-                <TableRow key={r.id}>
-                  {isManager && (
-                    <TableCell>
-                      <RowCheckbox id={r.id} label={`${r.party || cfg.singular} on ${formatDate(r.date)}, ${formatCurrency(r.amount)}`} />
-                    </TableCell>
-                  )}
-                  <TableCell className="whitespace-nowrap">{formatDate(r.date)}</TableCell>
-                  <TableCell className="max-w-48 truncate font-medium" title={r.party ?? ''}>{r.party || '—'}</TableCell>
-                  <TableCell><Badge variant="secondary">{r.kind}</Badge></TableCell>
-                  <TableCell className="max-w-64 truncate text-muted-foreground" title={r.description ?? ''}>{r.description || '—'}</TableCell>
-                  <TableCell>{r.payment_method || '—'}</TableCell>
-                  <TableCell className="max-w-32 truncate">{r.reference_no || '—'}</TableCell>
-                  <TableCell className="text-right font-medium tabular-nums whitespace-nowrap">{formatCurrency(r.amount)}</TableCell>
-                  <TableCell>{r.attachment_path ? <AttachmentLink path={r.attachment_path} /> : <span className="text-muted-foreground">—</span>}</TableCell>
-                  <TableCell className="whitespace-nowrap">{names[r.created_by] ?? '—'}</TableCell>
-                  {isManager && (
-                    <TableCell className="text-right">
-                      <LedgerRowActions ledger={ledger} row={r} />
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
+              {rows.map((r) => {
+                const select = isManager && (
+                  <TableCell>
+                    <RowCheckbox id={r.id} label={`${r.party || cfg.singular} on ${formatDate(r.date)}, ${formatCurrency(r.amount)}`} />
+                  </TableCell>
+                )
+                const party = <TableCell className="max-w-48 truncate font-medium" title={r.party ?? ''}>{r.party || '—'}</TableCell>
+                const date = <TableCell className="whitespace-nowrap">{formatDate(r.date)}</TableCell>
+                const amount = <TableCell className="text-right font-medium tabular-nums whitespace-nowrap">{formatCurrency(r.amount)}</TableCell>
+                const kind = <TableCell><Badge variant="secondary" className="max-w-56 truncate" title={r.kind}>{r.kind}</Badge></TableCell>
+                const note = <TableCell className="max-w-64 truncate text-muted-foreground" title={r.description ?? ''}>{r.description || '—'}</TableCell>
+                const tail = (
+                  <>
+                    <TableCell>{r.attachment_path ? <AttachmentLink path={r.attachment_path} /> : <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell className="whitespace-nowrap">{names[r.created_by] ?? '—'}</TableCell>
+                    {isManager && (
+                      <TableCell className="text-right">
+                        <LedgerRowActions ledger={ledger} row={r} />
+                      </TableCell>
+                    )}
+                  </>
+                )
+                return sheet ? (
+                  <TableRow key={r.id}>
+                    {select}
+                    {party}
+                    {date}
+                    {amount}
+                    <TableCell>{r.payment_method || '—'}</TableCell>
+                    <TableCell className="max-w-32 truncate">{r.paid_by || '—'}</TableCell>
+                    {kind}
+                    <TableCell className="max-w-48 truncate" title={r.paid_from ?? ''}>{r.paid_from || '—'}</TableCell>
+                    {note}
+                    <TableCell className="whitespace-nowrap">{r.status ? <Badge variant="outline">{r.status}</Badge> : '—'}</TableCell>
+                    {tail}
+                  </TableRow>
+                ) : (
+                  <TableRow key={r.id}>
+                    {select}
+                    {date}
+                    {party}
+                    {kind}
+                    {note}
+                    <TableCell>{r.payment_method || '—'}</TableCell>
+                    <TableCell className="max-w-32 truncate">{r.reference_no || '—'}</TableCell>
+                    {amount}
+                    {tail}
+                  </TableRow>
+                )
+              })}
             </TableBody>
             <TableFooter>
               <TableRow>
-                <TableCell colSpan={isManager ? 7 : 6}>Total of {count} filtered {count === 1 ? 'row' : 'rows'}</TableCell>
+                {/* Cells before Amount, then Amount, then the rest. */}
+                <TableCell colSpan={(isManager ? 1 : 0) + (sheet ? 2 : 6)}>Total of {count} filtered {count === 1 ? 'row' : 'rows'}</TableCell>
                 <TableCell className="text-right tabular-nums whitespace-nowrap">{formatCurrency(total)}</TableCell>
-                <TableCell colSpan={isManager ? 3 : 2} />
+                <TableCell colSpan={(isManager ? 1 : 0) + (sheet ? 8 : 2)} />
               </TableRow>
             </TableFooter>
           </Table>
