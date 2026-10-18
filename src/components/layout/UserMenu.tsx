@@ -1,6 +1,7 @@
 'use client'
 
-import { LogOut, UserRound } from 'lucide-react'
+import Link from 'next/link'
+import { KeyRound, LogOut, Settings, UserRound } from 'lucide-react'
 import { logout } from '@/actions/auth'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,6 +28,19 @@ export function UserMenu({ name, email, designation }: { name: string; email: st
           {designation && <div className="truncate text-xs text-brand-accent">{designation}</div>}
           <div className="truncate text-xs text-muted-foreground">{email}</div>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/settings">
+            <Settings />
+            Settings
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/settings#password">
+            <KeyRound />
+            Change password
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => void logout()}>
           <LogOut />

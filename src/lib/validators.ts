@@ -102,8 +102,30 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Password is required').max(200),
 })
 
+/** Rules for a new password, also shown as a checklist under the field. Matches docs/SUPABASE_SETUP.md. */
+export const PASSWORD_RULES = [
+  { label: 'At least 12 characters', test: (s: string) => s.length >= 12 },
+  { label: 'A lowercase letter', test: (s: string) => /[a-z]/.test(s) },
+  { label: 'An uppercase letter', test: (s: string) => /[A-Z]/.test(s) },
+  { label: 'A number', test: (s: string) => /[0-9]/.test(s) },
+  { label: 'A symbol (e.g. ! @ # $)', test: (s: string) => /[^A-Za-z0-9]/.test(s) },
+] as const
+
+export const changePasswordSchema = z
+  .object({
+    current: z.string().min(1, 'Enter your current password').max(200),
+    next: z
+      .string()
+      .max(72, 'Use at most 72 characters')
+      .refine((s) => PASSWORD_RULES.every((r) => r.test(s)), 'The new password does not meet all the rules below'),
+    confirm: z.string(),
+  })
+  .refine((v) => v.next === v.confirm, { path: ['confirm'], message: 'The passwords do not match' })
+  .refine((v) => v.next !== v.current, { path: ['next'], message: 'Choose a password different from the current one' })
+
 export type ExpenseInput = z.input<typeof expenseSchema>
 export type EarningInput = z.input<typeof earningSchema>
 export type InvestorInput = z.input<typeof investorSchema>
 export type InvestmentInput = z.input<typeof investmentSchema>
 export type LoginInput = z.input<typeof loginSchema>
+export type ChangePasswordInput = z.input<typeof changePasswordSchema>
