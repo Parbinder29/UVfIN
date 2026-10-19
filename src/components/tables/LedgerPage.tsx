@@ -9,7 +9,7 @@ import { PAYMENT_METHODS } from '@/lib/constants'
 import { formatCurrency, formatDate } from '@/lib/format'
 import { LEDGERS, LEDGER_SORTS } from '@/lib/ledger'
 import { parseListParams } from '@/lib/list-params'
-import { getFilteredTotal, getLedgerRows } from '@/lib/queries'
+import { getFilteredTotal, getLedgerKinds, getLedgerRows } from '@/lib/queries'
 import { ExportButton } from './ExportButton'
 import { FilterBar } from './FilterBar'
 import { ImportLedgerButton } from './ImportLedgerButton'
@@ -27,7 +27,8 @@ export async function LedgerPage({
   searchParams: Record<string, string | string[] | undefined>
 }) {
   const cfg = LEDGERS[ledger]
-  const filters = parseListParams(searchParams, { sortable: LEDGER_SORTS, defaultSort: 'date', kinds: cfg.kinds, methods: PAYMENT_METHODS })
+  const kinds = await getLedgerKinds(cfg)
+  const filters = parseListParams(searchParams, { sortable: LEDGER_SORTS, defaultSort: 'date', kinds, methods: PAYMENT_METHODS })
 
   const [user, [{ rows, count }, total, names]] = await requireUserWith(
     Promise.all([getLedgerRows(cfg, filters, { page: filters.page }), getFilteredTotal(cfg.table, filters), getProfileNames()])
@@ -51,7 +52,7 @@ export async function LedgerPage({
       <FilterBar
         searchPlaceholder={`Search ${cfg.partyLabel.toLowerCase()}, ${cfg.descriptionLabel.toLowerCase()} or reference…`}
         kindLabel={cfg.kindLabel}
-        kinds={cfg.kinds}
+        kinds={kinds}
         methods={PAYMENT_METHODS}
       />
 

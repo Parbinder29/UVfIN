@@ -153,7 +153,8 @@ export function LedgerFormDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {cfg.kinds.map((k) => (
+                      {/* A ledger added by an import isn't in the standard list; keep it selectable. */}
+                      {(row?.kind && !cfg.kinds.includes(row.kind) ? [...cfg.kinds, row.kind] : cfg.kinds).map((k) => (
                         <SelectItem key={k} value={k}>
                           {k}
                         </SelectItem>

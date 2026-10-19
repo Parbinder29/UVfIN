@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { EARNING_SOURCES, EXPENSE_CATEGORIES, PAYMENT_METHODS } from '@/lib/constants'
+import { EARNING_SOURCES, PAYMENT_METHODS } from '@/lib/constants'
 
 // Shared by the browser forms and the server actions, so both sides apply
 // exactly the same rules.
@@ -40,7 +40,8 @@ export const uuidSchema = z.string().uuid()
 export const expenseSchema = z.object({
   expense_date: isoDate,
   amount,
-  category: z.enum(EXPENSE_CATEGORIES, { errorMap: () => ({ message: 'Choose a debit ledger' }) }),
+  // Any ledger name: the list in constants.ts is the suggestions, and an import may add new ones.
+  category: requiredText('Debit Ledger', 100),
   payee: requiredText('Item / Party', 200),
   description: optionalText(1000),
   payment_method: paymentMethod,

@@ -60,6 +60,20 @@ export async function getLedgerRows(cfg: LedgerConfig, f: ListFilters, paging: P
   return { rows, count: count ?? 0 }
 }
 
+/**
+ * The standard categories plus any other debit ledger in use (an import may
+ * add new ones), for the filter. Earnings sources are a fixed list.
+ */
+export async function getLedgerKinds(cfg: LedgerConfig): Promise<string[]> {
+  if (cfg.key !== 'expenses') return [...cfg.kinds]
+  const supabase = await createClient()
+  const known = `(${cfg.kinds.map((k) => `"${k.replace(/"/g, '\\"')}"`).join(',')})`
+  const { data, error } = await supabase.from('expenses').select('category').eq('is_deleted', false).not('category', 'in', known).limit(5000)
+  if (error) return [...cfg.kinds]
+  const extra = [...new Set((data ?? []).map((r) => r.category as string))].sort((a, b) => a.localeCompare(b))
+  return [...cfg.kinds, ...extra]
+}
+
 export async function getFilteredTotal(
   table: 'expenses' | 'earnings' | 'investments',
   f: ListFilters
