@@ -21,7 +21,7 @@ export const metadata = { title: 'Dashboard · UVfIN' }
 const SECTION_PATHS = { expenses: '/money-spent', earnings: '/earnings', investments: '/investments' } as const
 
 export default async function DashboardPage(props: PageProps<'/dashboard'>) {
-  const f = parseListParams(await props.searchParams, { sortable: [], defaultSort: 'date', defaultPreset: 'this-month' })
+  const f = parseListParams(await props.searchParams, { sortable: [], defaultSort: 'date', defaultPreset: 'all' })
   const [, [s, activity, names]] = await requireUserWith(
     Promise.all([getDashboardSummary(f.from, f.to), getRecentActivity(), getProfileNames()])
   )
