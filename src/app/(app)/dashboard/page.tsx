@@ -91,7 +91,7 @@ export default async function DashboardPage(props: PageProps<'/dashboard'>) {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Money spent by category</CardTitle>
+            <CardTitle className="text-base">Money spent by debit ledger</CardTitle>
           </CardHeader>
           <CardContent>
             <DonutChart data={s.by_category} />

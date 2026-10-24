@@ -9,7 +9,7 @@ import { formatDate } from '@/lib/format'
 import { IMPORT_MAX_BYTES, IMPORT_MAX_ROWS, parseGoogleSheetUrl } from '@/lib/import'
 import { LEDGERS, LEDGER_SORTS, type LedgerConfig, type LedgerRow } from '@/lib/ledger'
 import { parseListParams } from '@/lib/list-params'
-import { getLedgerRows } from '@/lib/queries'
+import { getLedgerKinds, getLedgerRows } from '@/lib/queries'
 import { createClient } from '@/lib/supabase/server'
 import { earningSchema, expenseSchema, uuidSchema } from '@/lib/validators'
 import { PAYMENT_METHODS } from '@/lib/constants'
@@ -162,9 +162,10 @@ export async function importLedgerEntries(
 }
 
 /**
- * Download one tab of a Google Sheet as CSV. Done on the server because the
- * browser's security policy only allows requests to this site and Supabase.
- * Only docs.google.com export links are ever requested, built from the id.
+ * Download a whole Google Sheet (every tab) as an Excel workbook, returned
+ * base64-encoded. Done on the server because the browser's security policy
+ * only allows requests to this site and Supabase. Only docs.google.com export
+ * links are ever requested, built from the id.
  */
 export async function fetchGoogleSheet(link: unknown): Promise<ActionResult<string>> {
   try {
@@ -176,7 +177,7 @@ export async function fetchGoogleSheet(link: unknown): Promise<ActionResult<stri
       'Google did not share this sheet. In Google Sheets, click Share → General access → "Anyone with the link" (Viewer), then try again.'
     let res: Response
     try {
-      res = await fetch(`https://docs.google.com/spreadsheets/d/${sheet.id}/export?format=csv&gid=${sheet.gid}`, {
+      res = await fetch(`https://docs.google.com/spreadsheets/d/${sheet.id}/export?format=xlsx`, {
         cache: 'no-store',
         redirect: 'follow',
         signal: AbortSignal.timeout(15000),
@@ -186,8 +187,8 @@ export async function fetchGoogleSheet(link: unknown): Promise<ActionResult<stri
     }
     const finalHost = new URL(res.url).hostname
     const fromGoogleData = finalHost === 'docs.google.com' || finalHost.endsWith('.googleusercontent.com')
-    if (res.status === 404) return { ok: false, error: 'That sheet or tab was not found. Check the link.' }
-    if (!res.ok || !fromGoogleData || !res.headers.get('content-type')?.includes('text/csv')) {
+    if (res.status === 404) return { ok: false, error: 'That sheet was not found. Check the link.' }
+    if (!res.ok || !fromGoogleData || !res.headers.get('content-type')?.includes('spreadsheetml')) {
       await res.body?.cancel()
       return { ok: false, error: notShared }
     }
@@ -206,7 +207,7 @@ export async function fetchGoogleSheet(link: unknown): Promise<ActionResult<stri
       }
       chunks.push(value)
     }
-    return { ok: true, data: new TextDecoder().decode(Buffer.concat(chunks)) }
+    return { ok: true, data: Buffer.concat(chunks).toString('base64') }
   } catch (e) {
     return caught(e)
   }
@@ -264,9 +265,28 @@ export async function exportLedger(key: unknown, params: unknown): Promise<Actio
     const k = ledgerKey.parse(key)
     const cfg = LEDGERS[k]
     const raw = z.record(z.string()).parse(params ?? {})
-    const filters = parseListParams(raw, { sortable: LEDGER_SORTS, defaultSort: 'date', kinds: cfg.kinds, methods: PAYMENT_METHODS })
+    const filters = parseListParams(raw, { sortable: LEDGER_SORTS, defaultSort: 'date', kinds: await getLedgerKinds(cfg), methods: PAYMENT_METHODS })
     const [{ rows }, names] = await Promise.all([getLedgerRows(cfg, filters, { exportAll: true }), getProfileNames()])
-    const csv = toCSV<LedgerRow>(rows, [
+    const added = (r: LedgerRow) => names[r.created_by] ?? ''
+    const attachment = (r: LedgerRow) => (r.attachment_path ? 'Yes' : '')
+    // Money Spent exports in the company's accounts-sheet layout, so it can be imported straight back.
+    const csv = cfg.sheetColumns
+      ? toCSV<LedgerRow & { sr: number }>(rows.map((r, i) => ({ ...r, sr: i + 1 })), [
+          { label: 'Sr No', value: (r) => r.sr },
+          { label: 'Item / Party', value: (r) => r.party },
+          { label: 'Date', value: (r) => formatDate(r.date) },
+          { label: 'Amount (₹)', value: (r) => r.amount },
+          { label: 'Paid Via', value: (r) => r.payment_method },
+          { label: 'Paid By', value: (r) => r.paid_by },
+          { label: 'Debit Ledger', value: (r) => r.kind },
+          { label: 'Credit Ledger', value: (r) => r.paid_from },
+          { label: 'Note', value: (r) => r.description },
+          { label: 'Status', value: (r) => r.status },
+          { label: 'Reference No', value: (r) => r.reference_no },
+          { label: 'Attachment', value: attachment },
+          { label: 'Added By', value: added },
+        ])
+      : toCSV<LedgerRow>(rows, [
       { label: 'Date', value: (r) => formatDate(r.date) },
       { label: cfg.partyLabel, value: (r) => r.party },
       { label: cfg.kindLabel, value: (r) => r.kind },
@@ -274,8 +294,8 @@ export async function exportLedger(key: unknown, params: unknown): Promise<Actio
       { label: 'Payment Method', value: (r) => r.payment_method },
       { label: 'Reference No', value: (r) => r.reference_no },
       { label: 'Amount', value: (r) => r.amount },
-      { label: 'Attachment', value: (r) => (r.attachment_path ? 'Yes' : '') },
-      { label: 'Added By', value: (r) => names[r.created_by] ?? '' },
+      { label: 'Attachment', value: attachment },
+      { label: 'Added By', value: added },
     ])
     return { ok: true, data: csv }
   } catch (e) {

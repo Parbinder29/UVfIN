@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useTransition } from 'react'
+import { useMemo, useRef, useState, useTransition } from 'react'
 import { AlertCircle, FileSpreadsheet, Link2, Loader2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchGoogleSheet, importLedgerEntries } from '@/actions/ledger'
@@ -10,33 +10,47 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { PAYMENT_METHODS } from '@/lib/constants'
+import { EXPENSE_STATUSES, PAYMENT_METHODS } from '@/lib/constants'
 import { formatCurrency, formatDate } from '@/lib/format'
 import {
   IMPORT_MAX_BYTES,
   IMPORT_MAX_ROWS,
   parseCSV,
   parseGoogleSheetUrl,
-  parseLedgerSheet,
+  planSheet,
+  planWorkbook,
+  readyRows,
   templateHeaders,
-  type ParsedSheet,
+  type ChartOfAccounts,
+  type ImportRow,
+  type LedgerKey,
   type Sheets,
 } from '@/lib/import'
 import { LEDGERS } from '@/lib/ledger'
 import { cn } from '@/lib/utils'
 
 const SHOWN_PROBLEMS = 20
+const DESTS: LedgerKey[] = ['expenses', 'earnings']
 type Source = 'file' | 'google'
 
-/** Finance managers: add many entries from Excel, CSV or a Google Sheet, with a preview first. */
-export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings' }) {
+const rowDate = (r: ImportRow) => String(r.values[r.dest ? LEDGERS[r.dest].dateCol : 'date'] ?? '')
+const rowParty = (r: ImportRow) => String(r.values[r.dest ? LEDGERS[r.dest].partyCol : 'party'] ?? '')
+
+/**
+ * Finance managers: add many entries from Excel, CSV or a Google Sheet, with a
+ * preview first. A workbook in the accounts-sheet layout is sorted row by row
+ * into Money Spent and Earnings, whichever page the import was opened from.
+ */
+export function ImportLedgerButton({ ledger }: { ledger: LedgerKey }) {
   const cfg = LEDGERS[ledger]
   const [open, setOpen] = useState(false)
   const [source, setSource] = useState<Source>('file')
   const [link, setLink] = useState('')
   const [sheets, setSheets] = useState<Sheets | null>(null)
   const [sheetName, setSheetName] = useState('')
-  const [parsed, setParsed] = useState<ParsedSheet | null>(null)
+  const [coa, setCoa] = useState<ChartOfAccounts>(new Map())
+  // Dates typed in the preview for rows the sheet has no date for, by row number.
+  const [dates, setDates] = useState<Record<number, string>>({})
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reading, setReading] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -45,23 +59,34 @@ export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings'
   const reset = () => {
     setSheets(null)
     setSheetName('')
-    setParsed(null)
+    setCoa(new Map())
+    setDates({})
     setLoadError(null)
     if (fileInput.current) fileInput.current.value = ''
   }
 
-  const pickSheet = (all: Sheets, name: string) => {
+  const plan = useMemo(() => {
+    const found = sheets?.find((s) => s.sheet === sheetName)
+    return found ? planSheet(found.data, { fallback: ledger, coa, dates }) : null
+  }, [sheets, sheetName, coa, dates, ledger])
+
+  const pickSheet = (name: string) => {
     setSheetName(name)
-    const found = all.find((s) => s.sheet === name)
-    setParsed(found ? parseLedgerSheet(cfg, found.data) : null)
+    setDates({})
   }
 
   const showSheets = (all: Sheets) => {
     if (!all.length) return setLoadError('The spreadsheet is empty.')
+    // Start with the tab that has the most entries, using the Chart of Accounts tab if there is one.
+    const best = planWorkbook(all, ledger)
     setSheets(all)
-    // Start with the first sheet that looks like a ledger.
-    const first = all.find((s) => !parseLedgerSheet(cfg, s.data).error) ?? all[0]
-    pickSheet(all, first.sheet)
+    setCoa(best.coa)
+    setSheetName(best.sheet)
+  }
+
+  const readWorkbook = async (data: ArrayBuffer) => {
+    const { default: readExcelFile } = await import('read-excel-file/universal')
+    showSheets((await readExcelFile(data)) as unknown as Sheets)
   }
 
   const onFile = async (file: File | undefined) => {
@@ -74,12 +99,8 @@ export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings'
     if (file.size > IMPORT_MAX_BYTES) return setLoadError('The file is larger than 5 MB. Split it into smaller files.')
     setReading(true)
     try {
-      if (isCsv) {
-        showSheets([{ sheet: file.name, data: parseCSV(await file.text()) }])
-      } else {
-        const { default: readExcelFile } = await import('read-excel-file/universal')
-        showSheets((await readExcelFile(await file.arrayBuffer())) as unknown as Sheets)
-      }
+      if (isCsv) showSheets([{ sheet: file.name, data: parseCSV(await file.text()) }])
+      else await readWorkbook(await file.arrayBuffer())
     } catch {
       setLoadError(`This file could not be read. Make sure it is a real ${isCsv ? 'CSV' : 'Excel (.xlsx)'} file and not password-protected.`)
     } finally {
@@ -95,10 +116,10 @@ export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings'
     setReading(true)
     try {
       const result = await fetchGoogleSheet(link)
-      if (!result.ok || result.data == null) return setLoadError(result.ok ? 'The sheet is empty.' : result.error)
-      showSheets([{ sheet: 'Google Sheet', data: parseCSV(result.data) }])
+      if (!result.ok || !result.data) return setLoadError(result.ok ? 'The sheet is empty.' : result.error)
+      await readWorkbook(Uint8Array.from(atob(result.data), (c) => c.charCodeAt(0)).buffer)
     } catch {
-      setLoadError('Google Sheets could not be reached. Please try again.')
+      setLoadError('The Google Sheet could not be read. Please try again.')
     } finally {
       setReading(false)
     }
@@ -106,38 +127,50 @@ export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings'
 
   const downloadTemplate = async () => {
     const { default: writeExcelFile } = await import('write-excel-file/browser')
-    const header = templateHeaders(cfg).map((value) => ({ value, fontWeight: 'bold' as const }))
-    const longest = Math.max(cfg.kinds.length, PAYMENT_METHODS.length)
+    const headers = templateHeaders(cfg)
+    const header = headers.map((value) => ({ value, fontWeight: 'bold' as const }))
+    const statuses: readonly string[] = cfg.sheetColumns ? EXPENSE_STATUSES : []
+    const longest = Math.max(cfg.kinds.length, PAYMENT_METHODS.length, statuses.length)
     const allowed = [
-      [{ value: cfg.kindLabel, fontWeight: 'bold' as const }, { value: 'Payment Method', fontWeight: 'bold' as const }],
-      ...Array.from({ length: longest }, (_, i) => [cfg.kinds[i] ?? null, PAYMENT_METHODS[i] ?? null]),
+      [cfg.kindLabel, cfg.methodLabel, ...(statuses.length ? ['Status (suggested)'] : [])].map((value) => ({ value, fontWeight: 'bold' as const })),
+      ...Array.from({ length: longest }, (_, i) => [cfg.kinds[i] ?? null, PAYMENT_METHODS[i] ?? null, ...(statuses.length ? [statuses[i] ?? null] : [])]),
     ]
+    const wide = new Set(['Description', 'Note', 'Item / Party', 'Debit Ledger', 'Credit Ledger'])
     await writeExcelFile([
-      { sheet: cfg.title, data: [header], columns: templateHeaders(cfg).map((h) => ({ width: h === 'Description' ? 40 : 18 })) },
-      { sheet: 'Allowed values', data: allowed, columns: [{ width: 22 }, { width: 18 }] },
+      { sheet: cfg.title, data: [header], columns: headers.map((h) => ({ width: h === 'Sr No' ? 7 : wide.has(h) ? 32 : 14 })) },
+      { sheet: 'Allowed values', data: allowed, columns: [{ width: 36 }, { width: 16 }, { width: 20 }] },
     ]).toFile(`uvfin-${ledger === 'expenses' ? 'money-spent' : 'earnings'}-template.xlsx`)
   }
 
-  const good = parsed?.rows.filter((r) => r.errors.length === 0) ?? []
-  const bad = parsed?.rows.filter((r) => r.errors.length > 0) ?? []
-  const total = good.reduce((sum, r) => sum + Number(r.values.amount), 0)
-  const tooMany = good.length > IMPORT_MAX_ROWS
+  const good = plan ? readyRows(plan) : []
+  const groups = DESTS.map((dest) => {
+    const rows = good.filter((r) => r.dest === dest)
+    return { dest, rows, total: rows.reduce((sum, r) => sum + Number(r.values.amount), 0) }
+  }).filter((g) => g.rows.length > 0)
+  // Rows without a date get a date box; other problems are listed to fix in the sheet.
+  const undated = plan?.rows.filter((r) => r.dest && r.missingDate) ?? []
+  const bad = plan?.rows.filter((r) => r.dest && !r.missingDate && r.errors.length > 0) ?? []
+  const skipped = plan?.rows.filter((r) => r.skip) ?? []
+  const tooMany = groups.some((g) => g.rows.length > IMPORT_MAX_ROWS)
   const busy = reading || pending
 
   const runImport = () =>
     startTransition(async () => {
-      const result = await importLedgerEntries(
-        ledger,
-        good.map((r) => r.values)
-      )
-      if (!result.ok || !result.data) {
-        toast.error(result.ok ? 'Nothing was imported.' : result.error)
-        return
+      const done: string[] = []
+      for (const { dest, rows } of groups) {
+        const result = await importLedgerEntries(
+          dest,
+          rows.map((r) => r.values)
+        )
+        if (!result.ok || !result.data) {
+          const before = done.length ? ` (${done.join('; ')} — already saved.)` : ''
+          toast.error(`${LEDGERS[dest].title}: ${result.ok ? 'nothing was imported.' : result.error}${before}`)
+          return
+        }
+        const { added, skipped: dupes } = result.data
+        done.push(`${LEDGERS[dest].title}: ${added} added${dupes ? `, ${dupes} already in UVfIN` : ''}`)
       }
-      const { added, skipped } = result.data
-      const skippedNote = skipped ? ` ${skipped} already in UVfIN ${skipped === 1 ? 'was' : 'were'} skipped.` : ''
-      if (added) toast.success(`${added} ${added === 1 ? 'entry' : 'entries'} added.${skippedNote}`)
-      else toast.info(`Nothing new to add.${skippedNote}`)
+      toast.success(`${done.join('. ')}.`)
       setOpen(false)
       reset()
     })
@@ -164,19 +197,13 @@ export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings'
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Import {cfg.title}</DialogTitle>
+            <DialogTitle>Import entries</DialogTitle>
             <DialogDescription>
-              From an Excel or CSV file, or a Google Sheet. Columns: <strong>Date</strong>, <strong>Amount</strong>,{' '}
-              <strong>{cfg.kindLabel}</strong>
-              {cfg.partyRequired ? (
-                <>
-                  , <strong>{cfg.partyLabel}</strong>
-                </>
-              ) : (
-                `, ${cfg.partyLabel}`
-              )}
-              , and optionally Description, Payment Method, Reference No. Dates are read as day/month/year. You see a preview
-              before anything is saved.
+              From an Excel or CSV file, or a Google Sheet. A workbook in the accounts-sheet layout (Debit Ledger, Credit Ledger)
+              is sorted automatically: spending goes to Money Spent and money received from customers to Earnings. Transfers and
+              unidentified receipts are listed but not imported. Other sheets need <strong>Date</strong>, <strong>Amount</strong>{' '}
+              and <strong>{cfg.kindLabel}</strong> columns. Dates are read as day/month/year. You see a preview before anything is
+              saved.
             </DialogDescription>
           </DialogHeader>
 
@@ -248,8 +275,8 @@ export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings'
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  The sheet must be shared as &ldquo;Anyone with the link&rdquo; (Viewer). The tab open in the link is the one
-                  imported. Template: use{' '}
+                  The sheet must be shared as &ldquo;Anyone with the link&rdquo; (Viewer). Every tab is read and the one with the
+                  entries is picked; you can choose another below. Template: use{' '}
                   <button type="button" className="underline underline-offset-2" onClick={downloadTemplate}>
                     this Excel file
                   </button>{' '}
@@ -273,8 +300,8 @@ export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings'
 
             {sheets && sheets.length > 1 && (
               <div className="space-y-2">
-                <Label>Sheet</Label>
-                <Select value={sheetName} onValueChange={(v) => pickSheet(sheets, v)}>
+                <Label>Tab with the entries</Label>
+                <Select value={sheetName} onValueChange={pickSheet}>
                   <SelectTrigger className="w-full sm:w-64">
                     <SelectValue />
                   </SelectTrigger>
@@ -286,36 +313,39 @@ export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings'
                     ))}
                   </SelectContent>
                 </Select>
+                {coa.size > 0 && (
+                  <p className="text-xs text-muted-foreground">Using the workbook&rsquo;s chart of accounts ({coa.size} ledgers) to sort the rows.</p>
+                )}
               </div>
             )}
 
-            {parsed?.error && (
+            {plan?.error && (
               <Alert variant="destructive">
                 <AlertCircle />
-                <AlertDescription>{parsed.error}</AlertDescription>
+                <AlertDescription>{plan.error}</AlertDescription>
               </Alert>
             )}
 
-            {parsed && !parsed.error && (
+            {plan && !plan.error && (
               <div className="space-y-3 text-sm">
-                <div className="rounded-lg border bg-muted/40 p-3">
-                  <p>
-                    <strong>{good.length}</strong> {good.length === 1 ? 'row is' : 'rows are'} ready to import, totalling{' '}
-                    <strong>{formatCurrency(total)}</strong>.
-                    {bad.length > 0 && (
-                      <>
-                        {' '}
-                        <strong className="text-destructive">{bad.length}</strong> {bad.length === 1 ? 'row has' : 'rows have'} problems
-                        and will be left out.
-                      </>
-                    )}
-                  </p>
-                  {parsed.ignored.length > 0 && (
-                    <p className="mt-1 text-muted-foreground">Columns not used: {parsed.ignored.join(', ')}.</p>
+                <div className="space-y-1 rounded-lg border bg-muted/40 p-3">
+                  {groups.length === 0 && <p>No rows are ready to import yet.</p>}
+                  {groups.map((g) => (
+                    <p key={g.dest}>
+                      <strong>{g.rows.length}</strong> {g.rows.length === 1 ? 'row' : 'rows'} to <strong>{LEDGERS[g.dest].title}</strong>,
+                      totalling <strong>{formatCurrency(g.total)}</strong>.
+                    </p>
+                  ))}
+                  {plan.newCategories.length > 0 && (
+                    <p>
+                      New debit {plan.newCategories.length === 1 ? 'ledger' : 'ledgers'} that will be added:{' '}
+                      <strong>{plan.newCategories.join(', ')}</strong>.
+                    </p>
                   )}
-                  <p className="mt-1 text-muted-foreground">
-                    Rows already in UVfIN (same date, amount, {cfg.kindLabel.toLowerCase()}, {cfg.partyLabel.toLowerCase()} and
-                    reference) are skipped.
+                  {plan.ignored.length > 0 && <p className="text-muted-foreground">Columns not used: {plan.ignored.join(', ')}.</p>}
+                  <p className="text-muted-foreground">
+                    Rows already in UVfIN (same date, amount, ledger, party and reference, including a &ldquo;Ref&rdquo; number in the
+                    note) are skipped, so loading the same sheet again is safe.
                   </p>
                 </div>
 
@@ -328,18 +358,66 @@ export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings'
                   </Alert>
                 )}
 
+                {undated.length > 0 && (
+                  <div className="rounded-lg border border-amber-500/50 p-3">
+                    <p className="mb-2 font-medium">
+                      {undated.length === 1 ? 'This row has' : 'These rows have'} no date in the sheet. Enter one to import{' '}
+                      {undated.length === 1 ? 'it' : 'them'}; left blank, {undated.length === 1 ? 'it is' : 'they are'} left out.
+                    </p>
+                    <ul className="space-y-2">
+                      {undated.map((r) => {
+                        const others = r.errors.filter((e) => e !== 'Date is missing')
+                        return (
+                          <li key={r.line} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <Input
+                              type="date"
+                              aria-label={`Date for row ${r.line}`}
+                              className="h-8 w-40"
+                              value={dates[r.line] ?? ''}
+                              disabled={busy}
+                              onChange={(e) => setDates((d) => ({ ...d, [r.line]: e.target.value }))}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="font-medium">Row {r.line}:</span> {rowParty(r) || '—'} ·{' '}
+                              {Number.isFinite(Number(r.values.amount)) && r.values.amount !== '' ? formatCurrency(Number(r.values.amount)) : 'no amount'}{' '}
+                              → {LEDGERS[r.dest!].title}
+                              {others.length > 0 && <span className="text-destructive"> ({others.join('; ')})</span>}
+                            </span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                )}
+
                 {bad.length > 0 && (
                   <div className="rounded-lg border border-destructive/40 p-3">
                     <p className="mb-2 font-medium">Rows with problems (fix them in the sheet and load it again):</p>
                     <ul className="space-y-1 text-muted-foreground">
                       {bad.slice(0, SHOWN_PROBLEMS).map((r) => (
                         <li key={r.line}>
-                          <span className="font-medium text-foreground">Row {r.line}:</span> {r.errors.join('; ')}
+                          <span className="font-medium text-foreground">Row {r.line}</span> ({rowParty(r) || 'no name'}): {r.errors.join('; ')}
                         </li>
                       ))}
                     </ul>
                     {bad.length > SHOWN_PROBLEMS && <p className="mt-1 text-muted-foreground">…and {bad.length - SHOWN_PROBLEMS} more.</p>}
                   </div>
+                )}
+
+                {skipped.length > 0 && (
+                  <details className="rounded-lg border p-3">
+                    <summary className="cursor-pointer font-medium">
+                      {skipped.length} {skipped.length === 1 ? 'row is' : 'rows are'} not money spent or earnings and will not be imported
+                    </summary>
+                    <ul className="mt-2 space-y-1 text-muted-foreground">
+                      {skipped.map((r) => (
+                        <li key={r.line}>
+                          <span className="font-medium text-foreground">Row {r.line}</span> ({rowParty(r) || '—'}
+                          {r.values.amount !== '' && Number.isFinite(Number(r.values.amount)) ? `, ${formatCurrency(Number(r.values.amount))}` : ''}): {r.skip}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
 
                 {good.length > 0 && (
@@ -348,23 +426,25 @@ export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings'
                       <thead className="bg-muted/50">
                         <tr>
                           <th className="p-2">Date</th>
-                          <th className="p-2">{cfg.partyLabel}</th>
-                          <th className="p-2">{cfg.kindLabel}</th>
+                          <th className="p-2">Item / Party</th>
+                          <th className="p-2">Ledger / Source</th>
+                          <th className="p-2">Goes to</th>
                           <th className="p-2 text-right">Amount</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {good.slice(0, 5).map((r) => (
+                        {good.slice(0, 8).map((r) => (
                           <tr key={r.line} className="border-t">
-                            <td className="p-2 whitespace-nowrap">{formatDate(String(r.values[cfg.dateCol]))}</td>
-                            <td className="max-w-40 truncate p-2">{String(r.values[cfg.partyCol] ?? '') || '—'}</td>
-                            <td className="p-2">{String(r.values[cfg.kindCol])}</td>
+                            <td className="p-2 whitespace-nowrap">{formatDate(rowDate(r))}</td>
+                            <td className="max-w-40 truncate p-2">{rowParty(r) || '—'}</td>
+                            <td className="max-w-40 truncate p-2">{String(r.values[LEDGERS[r.dest!].kindCol])}</td>
+                            <td className="p-2 whitespace-nowrap">{LEDGERS[r.dest!].title}</td>
                             <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.values.amount))}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                    {good.length > 5 && <p className="border-t p-2 text-xs text-muted-foreground">First 5 of {good.length} rows shown.</p>}
+                    {good.length > 8 && <p className="border-t p-2 text-xs text-muted-foreground">First 8 of {good.length} rows shown.</p>}
                   </div>
                 )}
               </div>
@@ -375,7 +455,7 @@ export function ImportLedgerButton({ ledger }: { ledger: 'expenses' | 'earnings'
             <Button type="button" variant="outline" disabled={pending} onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="button" disabled={busy || !good.length || tooMany || !!parsed?.error} onClick={runImport}>
+            <Button type="button" disabled={busy || !good.length || tooMany || !!plan?.error} onClick={runImport}>
               {pending && <Loader2 className="animate-spin" />}
               {good.length ? `Import ${good.length} ${good.length === 1 ? 'row' : 'rows'}` : 'Import'}
             </Button>
